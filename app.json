@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Study Timer",
+    "slug": "study-timer-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "com.kwabena.studytimer",
+      "permissions": [
+        "NOTIFICATIONS",
+        "SCHEDULE_EXACT_ALARM"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#4f8ef7"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "52e059c9-ac49-42c2-9b9d-4812b6c33544"
+      }
+    }
+  }
+}
