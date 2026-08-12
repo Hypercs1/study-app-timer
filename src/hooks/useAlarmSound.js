@@ -1,32 +1,56 @@
 import { useEffect, useRef, useCallback } from "react";
 import { Audio } from "expo-av";
+import { loadSettings } from "../utils/storage";
+
+const SOUND_FILES = {
+  classic: require("../../assets/alarm-classic.wav"),
+  chime: require("../../assets/alarm-chime.wav"),
+  bell: require("../../assets/alarm-bell.wav"),
+  marimba: require("../../assets/alarm-marimba.wav"),
+};
 
 /**
- * Hook that manages alarm sound playback using a local bundled file.
+ * Hook that manages alarm sound playback using local bundled preset files.
  * Properly unloads previous sounds to prevent resource leaks.
  */
 export function useAlarmSound() {
   const soundRef = useRef(null);
 
   /**
-   * Play the alarm sound. Unloads any previous instance first
-   * to avoid orphaned audio resources.
+   * Play the alarm sound for a given presetKey (or default from settings).
    */
-  const playAlarm = useCallback(async () => {
+  const playAlarm = useCallback(async (presetKey) => {
     try {
-      // Unload previous sound if it exists
+      // Stop and unload any playing sound
       if (soundRef.current) {
         await soundRef.current.unloadAsync().catch(() => {});
         soundRef.current = null;
       }
 
-      const { sound } = await Audio.Sound.createAsync(
-        require("../../assets/alarm.wav"),
-        { shouldPlay: true }
-      );
+      let soundKey = presetKey;
+      if (!soundKey) {
+        const settings = await loadSettings();
+        soundKey = settings.soundPreset || "classic";
+      }
+
+      const fileAsset = SOUND_FILES[soundKey] || SOUND_FILES.classic;
+
+      const { sound } = await Audio.Sound.createAsync(fileAsset, {
+        shouldPlay: true,
+      });
       soundRef.current = sound;
     } catch (e) {
       console.warn("Could not play alarm sound", e);
+    }
+  }, []);
+
+  /**
+   * Stop any currently playing alarm preview.
+   */
+  const stopAlarm = useCallback(async () => {
+    if (soundRef.current) {
+      await soundRef.current.unloadAsync().catch(() => {});
+      soundRef.current = null;
     }
   }, []);
 
@@ -47,5 +71,5 @@ export function useAlarmSound() {
     };
   }, []);
 
-  return { playAlarm };
+  return { playAlarm, stopAlarm };
 }

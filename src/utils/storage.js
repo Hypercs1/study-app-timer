@@ -173,3 +173,43 @@ export async function updateSession(id, updates) {
 export async function clearSessions() {
   await AsyncStorage.removeItem(STORAGE_KEY);
 }
+
+// ────────────────────────────────────────────
+//  Settings
+// ────────────────────────────────────────────
+
+const SETTINGS_KEY = "@study_timer/settings";
+
+export const DEFAULT_SETTINGS = {
+  soundPreset: "classic",
+  vibrate: true,
+  keepAwake: true,
+  theme: "dark",
+};
+
+/**
+ * Load user settings from local storage.
+ */
+export async function loadSettings() {
+  try {
+    const raw = await AsyncStorage.getItem(SETTINGS_KEY);
+    return raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS;
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+/**
+ * Save user settings to local storage.
+ */
+export async function saveSettings(settings) {
+  try {
+    const current = await loadSettings();
+    const updated = { ...current, ...settings };
+    await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
+    return updated;
+  } catch (e) {
+    console.warn("Failed to save settings", e);
+    return DEFAULT_SETTINGS;
+  }
+}

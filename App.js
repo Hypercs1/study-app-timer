@@ -8,6 +8,7 @@ import SessionScreen from "./src/screens/SessionScreen";
 import DoneScreen from "./src/screens/DoneScreen";
 import HistoryScreen from "./src/screens/HistoryScreen";
 import StatsScreen from "./src/screens/StatsScreen";
+import SettingsScreen from "./src/screens/SettingsScreen";
 import { SESSIONS } from "./src/constants/sessions";
 import { saveSession, saveSubject } from "./src/utils/storage";
 
@@ -120,6 +121,7 @@ export default function App() {
 
   const viewHistory = useCallback(() => setScreen("history"), []);
   const viewStats = useCallback(() => setScreen("stats"), []);
+  const viewSettings = useCallback(() => setScreen("settings"), []);
 
   // ── Render ──
 
@@ -130,6 +132,7 @@ export default function App() {
           onStartStudying={startStudying}
           onViewStats={viewStats}
           onViewHistory={viewHistory}
+          onViewSettings={viewSettings}
         />
       )}
 
@@ -181,6 +184,8 @@ export default function App() {
       {screen === "history" && <HistoryScreen onGoHome={goHome} />}
 
       {screen === "stats" && <StatsScreen onGoHome={goHome} />}
+
+      {screen === "settings" && <SettingsScreen onGoHome={goHome} />}
     </ErrorBoundary>
   );
 }

@@ -8,11 +8,16 @@ import {
 } from "react-native";
 
 /**
- * Home screen — simple landing page with Start, Stats, and History buttons.
+ * Home screen — landing page with Start, Stats, History, and Settings buttons.
  *
- * @param {{ onStartStudying: () => void, onViewStats: () => void, onViewHistory: () => void }} props
+ * @param {{ onStartStudying: () => void, onViewStats: () => void, onViewHistory: () => void, onViewSettings: () => void }} props
  */
-export default function HomeScreen({ onStartStudying, onViewStats, onViewHistory }) {
+export default function HomeScreen({
+  onStartStudying,
+  onViewStats,
+  onViewHistory,
+  onViewSettings,
+}) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.wrap}>
@@ -30,8 +35,13 @@ export default function HomeScreen({ onStartStudying, onViewStats, onViewHistory
           <TouchableOpacity style={styles.secondaryBtn} onPress={onViewStats}>
             <Text style={styles.secondaryBtnText}>📊 Stats</Text>
           </TouchableOpacity>
+
           <TouchableOpacity style={styles.secondaryBtn} onPress={onViewHistory}>
             <Text style={styles.secondaryBtnText}>📋 History</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.secondaryBtn} onPress={onViewSettings}>
+            <Text style={styles.secondaryBtnText}>⚙️ Settings</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -71,18 +81,20 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: "row",
-    gap: 12,
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 10,
   },
   secondaryBtn: {
     borderWidth: 1.5,
     borderColor: "#1e2a38",
     borderRadius: 12,
     paddingVertical: 12,
-    paddingHorizontal: 22,
+    paddingHorizontal: 16,
   },
   secondaryBtnText: {
     color: "#9ab",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
   },
 });
