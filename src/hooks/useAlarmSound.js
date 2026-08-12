@@ -30,8 +30,16 @@ export function useAlarmSound() {
     }
   }, []);
 
-  // Clean up sound on unmount
+  // Set audio mode configuration on mount
   useEffect(() => {
+    Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      staysActiveInBackground: true,
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    }).catch((e) => console.warn("Failed to set audio mode", e));
+
     return () => {
       if (soundRef.current) {
         soundRef.current.unloadAsync().catch(() => {});

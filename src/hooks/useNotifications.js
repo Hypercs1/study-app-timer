@@ -1,9 +1,9 @@
 import { useEffect, useRef, useCallback } from "react";
 import { Platform, Alert } from "react-native";
 import * as Notifications from "expo-notifications";
-import { AndroidImportance } from "expo-notifications";
+import { AndroidImportance, AndroidAudioContentType } from "expo-notifications";
 
-// Show alert + play sound even when the app is in the foreground
+// Show alert + play sound even when the app is in the foreground or locked
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -39,9 +39,14 @@ export function useNotifications() {
       Notifications.setNotificationChannelAsync("study-timer-alarm", {
         name: "Study Timer Alarms",
         importance: AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
+        vibrationPattern: [0, 500, 250, 500],
         lightColor: "#4f8ef7",
         sound: "default",
+        audioAttributes: {
+          usage: AndroidAudioContentType.ALARM,
+          contentType: AndroidAudioContentType.SONIFICATION,
+        },
+        bypassDnd: true,
       });
     }
   }, []);
@@ -61,9 +66,10 @@ export function useNotifications() {
 
       const id = await Notifications.scheduleNotificationAsync({
         content: {
-          title: "Study Timer",
+          title: "Study Timer ⏰",
           body: `"${phaseName}" complete! Time for the next phase.`,
-          sound: true,
+          sound: "default",
+          priority: Notifications.AndroidNotificationPriority.HIGH,
           ...(Platform.OS === "android" && {
             channelId: "study-timer-alarm",
           }),
