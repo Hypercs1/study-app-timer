@@ -184,6 +184,7 @@ export const DEFAULT_SETTINGS = {
   soundPreset: "classic",
   vibrate: true,
   keepAwake: true,
+  autoAdvance: true,
   theme: "dark",
 };
 

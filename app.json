@@ -22,7 +22,13 @@
       [
         "expo-notifications",
         {
-          "color": "#4f8ef7"
+          "color": "#4f8ef7",
+          "sounds": [
+            "./assets/alarm_classic.wav",
+            "./assets/alarm_chime.wav",
+            "./assets/alarm_bell.wav",
+            "./assets/alarm_marimba.wav"
+          ]
         }
       ]
     ],

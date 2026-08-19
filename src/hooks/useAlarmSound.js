@@ -3,10 +3,10 @@ import { Audio } from "expo-av";
 import { loadSettings } from "../utils/storage";
 
 const SOUND_FILES = {
-  classic: require("../../assets/alarm-classic.wav"),
-  chime: require("../../assets/alarm-chime.wav"),
-  bell: require("../../assets/alarm-bell.wav"),
-  marimba: require("../../assets/alarm-marimba.wav"),
+  classic: require("../../assets/alarm_classic.wav"),
+  chime: require("../../assets/alarm_chime.wav"),
+  bell: require("../../assets/alarm_bell.wav"),
+  marimba: require("../../assets/alarm_marimba.wav"),
 };
 
 /**
