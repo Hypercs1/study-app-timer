@@ -6,16 +6,22 @@ import {
   StyleSheet,
   SafeAreaView,
   Alert,
+  Vibration,
   Switch,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import { useKeepAwake } from "expo-keep-awake";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { studyColors, breakColor } from "../constants/sessions";
 import { formatTime } from "../utils/formatTime";
 import { useTimer } from "../hooks/useTimer";
 import { useNotifications } from "../hooks/useNotifications";
 import { useAlarmSound } from "../hooks/useAlarmSound";
 import { loadSettings, saveSettings } from "../utils/storage";
+
+// Tag for the imperative keep-awake lock (held only while the timer runs).
+const KEEP_AWAKE_TAG = "study-session";
+// Vibration pattern for the phase-complete alarm (mirrors the notification channel).
+const ALARM_VIBRATION = [0, 500, 250, 500];
 
 /**
  * Session screen — timer, controls, progress, and tips.
@@ -24,9 +30,6 @@ import { loadSettings, saveSettings } from "../utils/storage";
  * @param {{ session: Object, onGoHome: () => void, onComplete: (meta: Object) => void }} props
  */
 export default function SessionScreen({ session, subject, subjectColor, onGoHome, onComplete, onPartialQuit }) {
-  // Keep screen awake during the entire session
-  useKeepAwake();
-
   const phases = session.phases;
   const [phaseIndex, setPhaseIndex] = useState(0);
   const [showTip, setShowTip] = useState(false);
@@ -37,6 +40,9 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
   const [autoAdvance, setAutoAdvance] = useState(true);
   // Which bundled alarm sound plays for background/locked notifications.
   const [soundPreset, setSoundPreset] = useState("classic");
+  // Honor the user's Settings toggles (seeded on; overwritten once settings load).
+  const [vibrate, setVibrate] = useState(true);
+  const [keepAwake, setKeepAwake] = useState(true);
 
   // Track when the user first presses play (for session history)
   const startedAtRef = useRef(null);
@@ -62,13 +68,41 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
   const secondsLeftRef = useRef(0);
   secondsLeftRef.current = secondsLeft;
 
+  // Mirror the vibrate setting into a ref so the haptic helpers below stay
+  // stable (they never need to be recreated when the setting flips).
+  const vibrateRef = useRef(true);
+  vibrateRef.current = vibrate;
+
+  // Haptic helpers — no-ops when the user turned Vibration off in Settings.
+  const impact = useCallback(() => {
+    if (vibrateRef.current) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  }, []);
+  const selection = useCallback(() => {
+    if (vibrateRef.current) Haptics.selectionAsync();
+  }, []);
+
   // Load saved prefs (auto-advance default + chosen sound) once on mount.
   useEffect(() => {
     loadSettings().then((s) => {
       setAutoAdvance(s.autoAdvance !== false);
       setSoundPreset(s.soundPreset || "classic");
+      setVibrate(s.vibrate !== false);
+      setKeepAwake(s.keepAwake !== false);
     });
   }, []);
+
+  // Hold a keep-awake lock only while the timer is actively running, and only
+  // if the user left the setting on. Released on pause, toggle-off, or unmount.
+  useEffect(() => {
+    if (running && keepAwake) {
+      activateKeepAwakeAsync(KEEP_AWAKE_TAG);
+      return () => {
+        deactivateKeepAwake(KEEP_AWAKE_TAG);
+      };
+    }
+  }, [running, keepAwake]);
 
   // Load first phase duration on mount
   useEffect(() => {
@@ -208,6 +242,7 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
   // auto-advance is on, roll into the next phase (or finish the session).
   const handlePhaseComplete = useCallback(() => {
     playAlarm(soundPreset);
+    if (vibrateRef.current) Vibration.vibrate(ALARM_VIBRATION);
     if (!autoAdvance) return;
     if (phaseIndex + 1 < phases.length) {
       goToPhase(phaseIndex + 1, true);
@@ -226,13 +261,13 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
 
   // ── Handlers with haptics & confirmation ──
   const handlePlayPause = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    impact();
     // Record the start time on the very first play press
     if (!startedAtRef.current) {
       startedAtRef.current = new Date().toISOString();
     }
     setRunning((r) => !r);
-  }, [setRunning]);
+  }, [impact, setRunning]);
 
   const handleSkip = useCallback(() => {
     if (running) {
@@ -244,32 +279,32 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
           {
             text: "Skip",
             onPress: () => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              impact();
               nextPhase();
             },
           },
         ]
       );
     } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      impact();
       nextPhase();
     }
-  }, [running, nextPhase]);
+  }, [impact, running, nextPhase]);
 
   const handleReset = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    impact();
     resetPhase();
-  }, [resetPhase]);
+  }, [impact, resetPhase]);
 
   // Flip auto-advance live and persist the new default for next time.
   const toggleAutoAdvance = useCallback(() => {
-    Haptics.selectionAsync();
+    selection();
     setAutoAdvance((prev) => {
       const next = !prev;
       saveSettings({ autoAdvance: next });
       return next;
     });
-  }, []);
+  }, [selection]);
 
   const handleGoHome = useCallback(() => {
     const doLeave = () => {
