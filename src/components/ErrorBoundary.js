@@ -38,6 +38,10 @@ export default class ErrorBoundary extends React.Component {
   }
 }
 
+// Intentionally hardcoded (not theme-driven): this class component wraps the
+// ThemeProvider, so it renders outside the theme context and can't call
+// useTheme(). It only appears on a render crash, so a fixed dark fallback is
+// acceptable.
 const styles = StyleSheet.create({
   container: {
     flex: 1,

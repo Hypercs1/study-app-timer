@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   SafeAreaView,
 } from "react-native";
+import { useTheme } from "../theme/ThemeContext";
 
 /**
  * Home screen — landing page with Start, Stats, History, and Settings buttons.
@@ -18,6 +19,9 @@ export default function HomeScreen({
   onViewHistory,
   onViewSettings,
 }) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.wrap}>
@@ -49,52 +53,53 @@ export default function HomeScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#090d14" },
-  wrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 28,
-  },
-  emoji: { fontSize: 56, marginBottom: 12 },
-  title: { color: "#f0f6ff", fontSize: 28, fontWeight: "800" },
-  subtitle: {
-    color: "#556070",
-    fontSize: 14,
-    marginTop: 8,
-    textAlign: "center",
-    maxWidth: 260,
-    marginBottom: 36,
-  },
-  startBtn: {
-    backgroundColor: "#4f8ef7",
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 48,
-    marginBottom: 20,
-  },
-  startBtnText: {
-    color: "#fff",
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  row: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 10,
-  },
-  secondaryBtn: {
-    borderWidth: 1.5,
-    borderColor: "#1e2a38",
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  secondaryBtnText: {
-    color: "#9ab",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-});
+const makeStyles = (t) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: t.bg },
+    wrap: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 28,
+    },
+    emoji: { fontSize: 56, marginBottom: 12 },
+    title: { color: t.textPrimary, fontSize: 28, fontWeight: "800" },
+    subtitle: {
+      color: t.textMuted,
+      fontSize: 14,
+      marginTop: 8,
+      textAlign: "center",
+      maxWidth: 260,
+      marginBottom: 36,
+    },
+    startBtn: {
+      backgroundColor: t.accent,
+      borderRadius: 14,
+      paddingVertical: 16,
+      paddingHorizontal: 48,
+      marginBottom: 20,
+    },
+    startBtnText: {
+      color: t.onAccent,
+      fontSize: 17,
+      fontWeight: "700",
+    },
+    row: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "center",
+      gap: 10,
+    },
+    secondaryBtn: {
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+    },
+    secondaryBtnText: {
+      color: t.textTertiary,
+      fontSize: 13,
+      fontWeight: "600",
+    },
+  });

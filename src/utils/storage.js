@@ -212,6 +212,66 @@ export async function clearSessions() {
 }
 
 // ────────────────────────────────────────────
+//  Custom session templates
+// ────────────────────────────────────────────
+// A template is a reusable custom session the user built in CustomSessionScreen:
+// { id, label, phases: [{ name, duration, emoji, isBreak, tip }] } — the same
+// shape as the built-in SESSIONS entries plus an id. Launched through the normal
+// custom-session path, so no special-casing is needed downstream.
+
+const TEMPLATES_KEY = "@study_timer/templates";
+
+/**
+ * Load all saved custom-session templates (newest first). [] if none.
+ * @returns {Promise<Array<{ id: string, label: string, phases: Array }>>}
+ */
+export async function loadTemplates() {
+  try {
+    const raw = await AsyncStorage.getItem(TEMPLATES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.warn("Failed to load templates:", e);
+    return [];
+  }
+}
+
+/**
+ * Save a custom-session template. Assigns an id and prepends so newest come
+ * first. Serialized on TEMPLATES_KEY so concurrent saves don't clobber.
+ *
+ * @param {{ label: string, phases: Array }} template
+ * @returns {Promise<{ id: string, label: string, phases: Array }>} the stored record
+ */
+export async function saveTemplate({ label, phases }) {
+  const record = {
+    id: generateId(),
+    label: (label && label.trim()) || "Custom Session",
+    phases: phases || [],
+  };
+
+  return withKeyLock(TEMPLATES_KEY, async () => {
+    const existing = await loadTemplates();
+    await AsyncStorage.setItem(
+      TEMPLATES_KEY,
+      JSON.stringify([record, ...existing])
+    );
+    return record;
+  });
+}
+
+/**
+ * Delete a single template by id.
+ * @param {string} id
+ */
+export async function deleteTemplate(id) {
+  return withKeyLock(TEMPLATES_KEY, async () => {
+    const templates = await loadTemplates();
+    const updated = templates.filter((t) => t.id !== id);
+    await AsyncStorage.setItem(TEMPLATES_KEY, JSON.stringify(updated));
+  });
+}
+
+// ────────────────────────────────────────────
 //  Settings
 // ────────────────────────────────────────────
 

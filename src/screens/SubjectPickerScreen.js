@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Platform,
 } from "react-native";
 import { loadSubjects } from "../utils/storage";
+import { useTheme } from "../theme/ThemeContext";
 
 /**
  * Subject picker screen — type a new subject or tap a recent one.
@@ -18,6 +19,9 @@ import { loadSubjects } from "../utils/storage";
  * @param {{ onSelectSubject: (name: string) => void, onGoHome: () => void }} props
  */
 export default function SubjectPickerScreen({ onSelectSubject, onGoHome }) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   const [text, setText] = useState("");
   const [subjects, setSubjects] = useState([]);
 
@@ -50,7 +54,12 @@ export default function SubjectPickerScreen({ onSelectSubject, onGoHome }) {
       >
         {/* ── Header ── */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={onGoHome} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={onGoHome}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Go home"
+          >
             <Text style={styles.backBtnText}>←</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>What are you studying?</Text>
@@ -66,7 +75,7 @@ export default function SubjectPickerScreen({ onSelectSubject, onGoHome }) {
             <TextInput
               style={styles.input}
               placeholder="e.g. Biology, Mathematics..."
-              placeholderTextColor="#445566"
+              placeholderTextColor={theme.textDisabled}
               value={text}
               onChangeText={setText}
               onSubmitEditing={handleSubmit}
@@ -126,96 +135,97 @@ export default function SubjectPickerScreen({ onSelectSubject, onGoHome }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#090d14" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  backBtn: {
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  backBtnText: { color: "#aab4c8", fontSize: 18 },
-  headerTitle: { color: "#f0f6ff", fontSize: 16, fontWeight: "700" },
-  spacer: { width: 40 },
-  scroll: { padding: 20, paddingTop: 20 },
-  inputWrap: {
-    backgroundColor: "#131920",
-    borderWidth: 1.5,
-    borderColor: "#1e2a38",
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    marginBottom: 16,
-  },
-  input: {
-    color: "#f0f6ff",
-    fontSize: 16,
-    paddingVertical: 14,
-  },
-  nextBtn: {
-    backgroundColor: "#4f8ef7",
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginBottom: 28,
-  },
-  nextBtnDisabled: {
-    backgroundColor: "#1e2a38",
-  },
-  nextBtnText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  nextBtnTextDisabled: {
-    color: "#445566",
-  },
-  sectionLabel: {
-    color: "#556070",
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 10,
-  },
-  subjectCard: {
-    backgroundColor: "#131920",
-    borderWidth: 1.5,
-    borderColor: "#1e2a38",
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 8,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  colorDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 12,
-  },
-  subjectName: {
-    color: "#f0f6ff",
-    fontSize: 15,
-    fontWeight: "600",
-    flex: 1,
-  },
-  arrowText: {
-    color: "#556070",
-    fontSize: 16,
-  },
-  noMatch: {
-    color: "#556070",
-    fontSize: 13,
-    textAlign: "center",
-    marginTop: 12,
-  },
-});
+const makeStyles = (t) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: t.bg },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingTop: 12,
+      paddingBottom: 8,
+    },
+    backBtn: {
+      backgroundColor: t.hairline,
+      borderRadius: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+    },
+    backBtnText: { color: t.textSecondary, fontSize: 18 },
+    headerTitle: { color: t.textPrimary, fontSize: 16, fontWeight: "700" },
+    spacer: { width: 40 },
+    scroll: { padding: 20, paddingTop: 20 },
+    inputWrap: {
+      backgroundColor: t.surface,
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 14,
+      paddingHorizontal: 16,
+      paddingVertical: 4,
+      marginBottom: 16,
+    },
+    input: {
+      color: t.textPrimary,
+      fontSize: 16,
+      paddingVertical: 14,
+    },
+    nextBtn: {
+      backgroundColor: t.accent,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: "center",
+      marginBottom: 28,
+    },
+    nextBtnDisabled: {
+      backgroundColor: t.border,
+    },
+    nextBtnText: {
+      color: t.onAccent,
+      fontSize: 15,
+      fontWeight: "700",
+    },
+    nextBtnTextDisabled: {
+      color: t.textDisabled,
+    },
+    sectionLabel: {
+      color: t.textMuted,
+      fontSize: 11,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginBottom: 10,
+    },
+    subjectCard: {
+      backgroundColor: t.surface,
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 14,
+      padding: 16,
+      marginBottom: 8,
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    colorDot: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      marginRight: 12,
+    },
+    subjectName: {
+      color: t.textPrimary,
+      fontSize: 15,
+      fontWeight: "600",
+      flex: 1,
+    },
+    arrowText: {
+      color: t.textMuted,
+      fontSize: 16,
+    },
+    noMatch: {
+      color: t.textMuted,
+      fontSize: 13,
+      textAlign: "center",
+      marginTop: 12,
+    },
+  });

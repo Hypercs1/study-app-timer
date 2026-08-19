@@ -7,6 +7,9 @@ import {
   saveSubject,
   loadSessions,
   saveSession,
+  loadTemplates,
+  saveTemplate,
+  deleteTemplate,
 } from "../storage";
 
 // AsyncStorage is replaced with the in-memory mock in jest.setup.js.
@@ -92,5 +95,61 @@ describe("sessions", () => {
     });
     expect(rec.actualStudyMins).toBe(12.5);
     expect(rec.completed).toBe(false);
+  });
+});
+
+describe("templates", () => {
+  const tpl = {
+    label: "Pomodoro",
+    phases: [
+      { name: "Focus", duration: 25, emoji: "📖", tip: "Deep work." },
+      { name: "Break", duration: 5, emoji: "☕", isBreak: true, tip: "Rest." },
+    ],
+  };
+
+  it("returns an empty array when nothing is stored", async () => {
+    expect(await loadTemplates()).toEqual([]);
+  });
+
+  it("assigns an id and round-trips the record", async () => {
+    const rec = await saveTemplate(tpl);
+    expect(typeof rec.id).toBe("string");
+    expect(rec.label).toBe("Pomodoro");
+    expect(rec.phases).toHaveLength(2);
+
+    const loaded = await loadTemplates();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]).toEqual(rec);
+  });
+
+  it("falls back to a default label when none is given", async () => {
+    const rec = await saveTemplate({ phases: [] });
+    expect(rec.label).toBe("Custom Session");
+  });
+
+  it("prepends newest templates first", async () => {
+    await saveTemplate({ ...tpl, label: "First" });
+    await saveTemplate({ ...tpl, label: "Second" });
+    const loaded = await loadTemplates();
+    expect(loaded.map((t) => t.label)).toEqual(["Second", "First"]);
+  });
+
+  it("deletes a template by id", async () => {
+    const a = await saveTemplate({ ...tpl, label: "Keep" });
+    const b = await saveTemplate({ ...tpl, label: "Remove" });
+    await deleteTemplate(b.id);
+    const loaded = await loadTemplates();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe(a.id);
+  });
+
+  it("persists both when two templates are saved concurrently", async () => {
+    // withKeyLock must serialize the read-modify-write so neither save clobbers.
+    await Promise.all([
+      saveTemplate({ ...tpl, label: "A" }),
+      saveTemplate({ ...tpl, label: "B" }),
+    ]);
+    const labels = (await loadTemplates()).map((t) => t.label).sort();
+    expect(labels).toEqual(["A", "B"]);
   });
 });

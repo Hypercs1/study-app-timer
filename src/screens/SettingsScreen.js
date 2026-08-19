@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
 } from "react-native";
 import { loadSettings, saveSettings } from "../utils/storage";
 import { useAlarmSound } from "../hooks/useAlarmSound";
+import { useTheme } from "../theme/ThemeContext";
+import { THEME_OPTIONS } from "../theme/themes";
 
 const SOUND_OPTIONS = [
   {
@@ -39,9 +41,13 @@ const SOUND_OPTIONS = [
 ];
 
 /**
- * Settings Screen — Sound selection, live audio previews, and future setting placeholders.
+ * Settings Screen — sound selection with live audio previews, behavior toggles,
+ * and live theme switching.
  */
 export default function SettingsScreen({ onGoHome }) {
+  const { theme, themeName, setThemeName } = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   const [settings, setSettingsState] = useState({
     soundPreset: "classic",
     vibrate: true,
@@ -88,7 +94,12 @@ export default function SettingsScreen({ onGoHome }) {
     <SafeAreaView style={styles.container}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onGoHome} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={onGoHome}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go home"
+        >
           <Text style={styles.backBtnText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>⚙️ Settings</Text>
@@ -122,6 +133,9 @@ export default function SettingsScreen({ onGoHome }) {
                     <TouchableOpacity
                       style={styles.soundSelectArea}
                       onPress={() => updateSetting("soundPreset", opt.key)}
+                      accessibilityRole="radio"
+                      accessibilityLabel={`${opt.name}. ${opt.desc}`}
+                      accessibilityState={{ selected: isSelected }}
                     >
                       <View
                         style={[
@@ -152,6 +166,10 @@ export default function SettingsScreen({ onGoHome }) {
                         isPlaying && styles.testBtnPlaying,
                       ]}
                       onPress={() => handleTestSound(opt.key)}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        isPlaying ? `Stop ${opt.name} preview` : `Preview ${opt.name}`
+                      }
                     >
                       <Text style={styles.testBtnText}>
                         {isPlaying ? "⏹ Stop" : "🔊 Preview"}
@@ -176,8 +194,10 @@ export default function SettingsScreen({ onGoHome }) {
                 <Switch
                   value={settings.vibrate}
                   onValueChange={(val) => updateSetting("vibrate", val)}
-                  trackColor={{ false: "#1e2a38", true: "#4f8ef7" }}
-                  thumbColor="#fff"
+                  trackColor={{ false: theme.border, true: theme.accent }}
+                  thumbColor={theme.onAccent}
+                  accessibilityLabel="Vibration and haptics"
+                  accessibilityState={{ checked: settings.vibrate }}
                 />
               </View>
 
@@ -191,42 +211,43 @@ export default function SettingsScreen({ onGoHome }) {
                 <Switch
                   value={settings.keepAwake}
                   onValueChange={(val) => updateSetting("keepAwake", val)}
-                  trackColor={{ false: "#1e2a38", true: "#4f8ef7" }}
-                  thumbColor="#fff"
+                  trackColor={{ false: theme.border, true: theme.accent }}
+                  thumbColor={theme.onAccent}
+                  accessibilityLabel="Keep screen awake"
+                  accessibilityState={{ checked: settings.keepAwake }}
                 />
               </View>
             </View>
 
-            {/* ── Section 3: App Theme (Future Customization Placeholder) ── */}
+            {/* ── Section 3: App Theme ── */}
             <View style={styles.sectionCard}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitle}>🎨 App Theme</Text>
-                <View style={styles.soonBadge}>
-                  <Text style={styles.soonText}>Customization</Text>
-                </View>
-              </View>
+              <Text style={styles.sectionTitle}>🎨 App Theme</Text>
               <Text style={styles.sectionSubtitle}>
-                Select your visual color palette preference.
+                Select your visual color palette. Changes apply instantly.
               </Text>
 
               <View style={styles.themeRow}>
-                <TouchableOpacity style={[styles.themePill, styles.themePillActive]}>
-                  <Text style={styles.themePillEmoji}>🌙</Text>
-                  <Text style={styles.themePillTextActive}>Dark Mode</Text>
-                  <Text style={styles.checkIcon}>✓</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.themePillDisabled}>
-                  <Text style={styles.themePillEmoji}>☀️</Text>
-                  <Text style={styles.themePillText}>Light</Text>
-                  <Text style={styles.miniSoon}>Soon</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.themePillDisabled}>
-                  <Text style={styles.themePillEmoji}>🖤</Text>
-                  <Text style={styles.themePillText}>OLED Black</Text>
-                  <Text style={styles.miniSoon}>Soon</Text>
-                </TouchableOpacity>
+                {THEME_OPTIONS.map((opt) => {
+                  const isActive = themeName === opt.key;
+                  return (
+                    <TouchableOpacity
+                      key={opt.key}
+                      style={[styles.themePill, isActive && styles.themePillActive]}
+                      onPress={() => setThemeName(opt.key)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${opt.name} theme`}
+                      accessibilityState={{ selected: isActive }}
+                    >
+                      <Text style={styles.themePillEmoji}>{opt.emoji}</Text>
+                      <Text
+                        style={isActive ? styles.themePillTextActive : styles.themePillText}
+                      >
+                        {opt.name}
+                      </Text>
+                      {isActive && <Text style={styles.checkIcon}>✓</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
           </>
@@ -236,130 +257,112 @@ export default function SettingsScreen({ onGoHome }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#090d14" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  backBtn: {
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  backBtnText: { color: "#aab4c8", fontSize: 18 },
-  headerTitle: { color: "#f0f6ff", fontSize: 16, fontWeight: "700" },
-  spacer: { width: 40 },
-  scroll: { padding: 20, paddingTop: 10 },
-  loadingText: { color: "#556070", fontSize: 14, textAlign: "center", marginTop: 40 },
-  sectionCard: {
-    backgroundColor: "#131920",
-    borderWidth: 1.5,
-    borderColor: "#1e2a38",
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 16,
-  },
-  sectionTitle: { color: "#f0f6ff", fontSize: 15, fontWeight: "700" },
-  sectionSubtitle: { color: "#556070", fontSize: 12, marginTop: 4, marginBottom: 14 },
-  sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  soonBadge: {
-    backgroundColor: "#1e2a38",
-    borderRadius: 10,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-  },
-  soonText: { color: "#4f8ef7", fontSize: 10, fontWeight: "700" },
-  soundOptionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#0d1117",
-    borderWidth: 1,
-    borderColor: "#1e2a38",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-  },
-  soundOptionRowSelected: {
-    borderColor: "#4f8ef7",
-    backgroundColor: "#131c28",
-  },
-  soundSelectArea: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  radioCircle: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: "#556070",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  radioCircleSelected: { borderColor: "#4f8ef7" },
-  radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#4f8ef7" },
-  optionEmoji: { fontSize: 18, marginRight: 10 },
-  optionName: { color: "#9ab", fontSize: 14, fontWeight: "600" },
-  optionNameSelected: { color: "#f0f6ff" },
-  optionDesc: { color: "#556070", fontSize: 11, marginTop: 2 },
-  testBtn: {
-    backgroundColor: "#1e2a38",
-    borderRadius: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginLeft: 8,
-  },
-  testBtnPlaying: {
-    backgroundColor: "#e06070",
-  },
-  testBtnText: { color: "#f0f6ff", fontSize: 12, fontWeight: "600" },
-  toggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1e2a38",
-  },
-  toggleTitle: { color: "#f0f6ff", fontSize: 14, fontWeight: "600" },
-  toggleDesc: { color: "#556070", fontSize: 11, marginTop: 2, paddingRight: 12 },
-  themeRow: { flexDirection: "row", gap: 10, marginTop: 12 },
-  themePill: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#0d1117",
-    borderWidth: 1.5,
-    borderColor: "#4f8ef7",
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-  },
-  themePillActive: { backgroundColor: "#131c28" },
-  themePillDisabled: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#0d1117",
-    borderWidth: 1,
-    borderColor: "#1e2a38",
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    opacity: 0.5,
-  },
-  themePillEmoji: { fontSize: 14, marginRight: 6 },
-  themePillText: { color: "#556070", fontSize: 12, fontWeight: "600" },
-  themePillTextActive: { color: "#f0f6ff", fontSize: 12, fontWeight: "700" },
-  checkIcon: { color: "#4f8ef7", fontSize: 12, fontWeight: "700", marginLeft: 4 },
-  miniSoon: { color: "#556070", fontSize: 9, marginLeft: 4 },
-});
+const makeStyles = (t) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: t.bg },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingTop: 12,
+      paddingBottom: 8,
+    },
+    backBtn: {
+      backgroundColor: t.hairline,
+      borderRadius: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+    },
+    backBtnText: { color: t.textSecondary, fontSize: 18 },
+    headerTitle: { color: t.textPrimary, fontSize: 16, fontWeight: "700" },
+    spacer: { width: 40 },
+    scroll: { padding: 20, paddingTop: 10 },
+    loadingText: { color: t.textMuted, fontSize: 14, textAlign: "center", marginTop: 40 },
+    sectionCard: {
+      backgroundColor: t.surface,
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 16,
+      padding: 18,
+      marginBottom: 16,
+    },
+    sectionTitle: { color: t.textPrimary, fontSize: 15, fontWeight: "700" },
+    sectionSubtitle: { color: t.textMuted, fontSize: 12, marginTop: 4, marginBottom: 14 },
+    soundOptionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: t.surfaceAlt,
+      borderWidth: 1,
+      borderColor: t.border,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 10,
+    },
+    soundOptionRowSelected: {
+      borderColor: t.accent,
+      backgroundColor: t.surfaceActive,
+    },
+    soundSelectArea: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    radioCircle: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      borderWidth: 2,
+      borderColor: t.textMuted,
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: 10,
+    },
+    radioCircleSelected: { borderColor: t.accent },
+    radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: t.accent },
+    optionEmoji: { fontSize: 18, marginRight: 10 },
+    optionName: { color: t.textTertiary, fontSize: 14, fontWeight: "600" },
+    optionNameSelected: { color: t.textPrimary },
+    optionDesc: { color: t.textMuted, fontSize: 11, marginTop: 2 },
+    testBtn: {
+      backgroundColor: t.border,
+      borderRadius: 10,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      marginLeft: 8,
+    },
+    testBtnPlaying: {
+      backgroundColor: t.danger,
+    },
+    testBtnText: { color: t.textPrimary, fontSize: 12, fontWeight: "600" },
+    toggleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: t.border,
+    },
+    toggleTitle: { color: t.textPrimary, fontSize: 14, fontWeight: "600" },
+    toggleDesc: { color: t.textMuted, fontSize: 11, marginTop: 2, paddingRight: 12 },
+    themeRow: { flexDirection: "row", gap: 10, marginTop: 12 },
+    themePill: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: t.surfaceAlt,
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 8,
+    },
+    themePillActive: {
+      backgroundColor: t.surfaceActive,
+      borderColor: t.accent,
+    },
+    themePillEmoji: { fontSize: 14, marginRight: 6 },
+    themePillText: { color: t.textMuted, fontSize: 12, fontWeight: "600" },
+    themePillTextActive: { color: t.textPrimary, fontSize: 12, fontWeight: "700" },
+    checkIcon: { color: t.accent, fontSize: 12, fontWeight: "700", marginLeft: 4 },
+  });

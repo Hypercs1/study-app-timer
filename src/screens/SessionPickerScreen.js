@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -6,26 +6,85 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  Alert,
 } from "react-native";
 import { SESSIONS } from "../constants/sessions";
+import { loadTemplates, deleteTemplate } from "../utils/storage";
+import { useTheme } from "../theme/ThemeContext";
 
 /**
- * Session picker screen — shows subject badge and session type cards.
+ * Runs a callback once, when the component mounts. Screens remount on each
+ * visit (the App-level `useState` screen switch unmounts the previous screen),
+ * so this refreshes the template list every time the picker is shown — no
+ * navigation-focus event needed.
+ */
+function useOnMount(callback) {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  React.useEffect(callback, []);
+}
+
+/**
+ * Sum the study (or break) minutes of a phase list.
+ */
+function sumMins(phases, isBreak) {
+  return phases
+    .filter((p) => (isBreak ? p.isBreak : !p.isBreak))
+    .reduce((a, p) => a + (p.duration || 0), 0);
+}
+
+/**
+ * Session picker screen — shows subject badge, saved templates, and session
+ * type cards.
  *
- * @param {{ subject: string, subjectColor: string, onStartSession: (key: string) => void, onGoBack: () => void }} props
+ * @param {{ subject: string, subjectColor: string, onStartSession: (key: string) => void, onOpenCustomSession: () => void, onStartTemplate: (template: Object) => void, onGoBack: () => void }} props
  */
 export default function SessionPickerScreen({
   subject,
   subjectColor,
   onStartSession,
   onOpenCustomSession,
+  onStartTemplate,
   onGoBack,
 }) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
+  const [templates, setTemplates] = useState([]);
+
+  // Refresh saved templates each time the picker is shown.
+  useOnMount(() => {
+    loadTemplates().then(setTemplates);
+  });
+
+  // ── Delete a saved template (with confirmation) ──
+  const handleDeleteTemplate = useCallback((tpl) => {
+    Alert.alert(
+      "Delete Template?",
+      `Remove "${tpl.label}" from your saved templates?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            await deleteTemplate(tpl.id);
+            setTemplates((prev) => prev.filter((t) => t.id !== tpl.id));
+          },
+        },
+      ]
+    );
+  }, []);
+
   return (
     <SafeAreaView style={styles.container}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onGoBack} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={onGoBack}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Text style={styles.backBtnText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Pick a session</Text>
@@ -38,20 +97,57 @@ export default function SessionPickerScreen({
           <View
             style={[
               styles.colorDot,
-              { backgroundColor: subjectColor || "#4f8ef7" },
+              { backgroundColor: subjectColor || theme.accent },
             ]}
           />
           <Text style={styles.subjectText}>{subject}</Text>
         </View>
 
+        {/* ── Saved templates ── */}
+        {templates.length > 0 && (
+          <View style={styles.templatesSection}>
+            <Text style={styles.sectionLabel}>Your Templates</Text>
+            {templates.map((tpl) => {
+              const studyMins = sumMins(tpl.phases, false);
+              const breakMins = sumMins(tpl.phases, true);
+              return (
+                <View key={tpl.id} style={styles.templateCard}>
+                  <TouchableOpacity
+                    style={styles.templateLaunch}
+                    onPress={() => onStartTemplate(tpl)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Start template ${tpl.label}`}
+                  >
+                    <Text style={styles.templateEmoji}>🗂️</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cardTitle} numberOfLines={1}>
+                        {tpl.label}
+                      </Text>
+                      <Text style={styles.cardMetaTight}>
+                        {tpl.phases.length} phase
+                        {tpl.phases.length !== 1 ? "s" : ""} · {studyMins}m study
+                        {breakMins > 0 ? ` · ${breakMins}m breaks` : ""}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.templateDelete}
+                    onPress={() => handleDeleteTemplate(tpl)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete template ${tpl.label}`}
+                  >
+                    <Text style={styles.templateDeleteText}>🗑️</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
         {/* ── Session cards ── */}
         {Object.entries(SESSIONS).map(([key, s]) => {
-          const studyMins = s.phases
-            .filter((p) => !p.isBreak)
-            .reduce((a, p) => a + p.duration, 0);
-          const breakMins = s.phases
-            .filter((p) => p.isBreak)
-            .reduce((a, p) => a + p.duration, 0);
+          const studyMins = sumMins(s.phases, false);
+          const breakMins = sumMins(s.phases, true);
 
           return (
             <TouchableOpacity
@@ -109,86 +205,120 @@ export default function SessionPickerScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#090d14" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  backBtn: {
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  backBtnText: { color: "#aab4c8", fontSize: 18 },
-  headerTitle: { color: "#f0f6ff", fontSize: 16, fontWeight: "700" },
-  spacer: { width: 40 },
-  scroll: { alignItems: "center", padding: 24, paddingTop: 12 },
-  subjectBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#131920",
-    borderWidth: 1.5,
-    borderColor: "#1e2a38",
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginBottom: 20,
-  },
-  colorDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 8,
-  },
-  subjectText: {
-    color: "#f0f6ff",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  card: {
-    backgroundColor: "#131920",
-    borderWidth: 1.5,
-    borderColor: "#1e2a38",
-    borderRadius: 18,
-    padding: 20,
-    width: "100%",
-    marginBottom: 14,
-  },
-  cardTitle: {
-    color: "#f0f6ff",
-    fontSize: 17,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  cardMeta: { color: "#556070", fontSize: 12, marginBottom: 12 },
-  phaseRow: { flexDirection: "row", alignItems: "center", marginBottom: 5 },
-  phaseEmoji: { fontSize: 13, marginRight: 8 },
-  phaseRowName: { color: "#9ab", fontSize: 12, flex: 1 },
-  phaseRowNameBreak: { color: "#445566", fontStyle: "italic" },
-  phaseRowDuration: { color: "#4f8ef7", fontSize: 12, fontWeight: "600" },
-  phaseRowDurationBreak: { color: "#445566" },
-  customCard: {
-    borderColor: "rgba(79, 142, 247, 0.4)",
-    backgroundColor: "#131b26",
-  },
-  customCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  customCardEmoji: {
-    fontSize: 24,
-    marginRight: 12,
-  },
-  customArrow: {
-    color: "#4f8ef7",
-    fontSize: 20,
-    fontWeight: "700",
-    marginLeft: 8,
-  },
-});
+const makeStyles = (t) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: t.bg },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingTop: 12,
+      paddingBottom: 8,
+    },
+    backBtn: {
+      backgroundColor: t.hairline,
+      borderRadius: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+    },
+    backBtnText: { color: t.textSecondary, fontSize: 18 },
+    headerTitle: { color: t.textPrimary, fontSize: 16, fontWeight: "700" },
+    spacer: { width: 40 },
+    scroll: { alignItems: "center", padding: 24, paddingTop: 12 },
+    subjectBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: t.surface,
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 20,
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      marginBottom: 20,
+    },
+    colorDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      marginRight: 8,
+    },
+    subjectText: {
+      color: t.textPrimary,
+      fontSize: 13,
+      fontWeight: "600",
+    },
+    templatesSection: { width: "100%", marginBottom: 6 },
+    sectionLabel: {
+      color: t.textMuted,
+      fontSize: 11,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginBottom: 10,
+    },
+    templateCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: t.surface,
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 16,
+      marginBottom: 10,
+    },
+    templateLaunch: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 16,
+      paddingLeft: 16,
+      paddingRight: 8,
+    },
+    templateEmoji: { fontSize: 20, marginRight: 12 },
+    templateDelete: {
+      paddingHorizontal: 16,
+      paddingVertical: 18,
+    },
+    templateDeleteText: { fontSize: 15 },
+    card: {
+      backgroundColor: t.surface,
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 18,
+      padding: 20,
+      width: "100%",
+      marginBottom: 14,
+    },
+    cardTitle: {
+      color: t.textPrimary,
+      fontSize: 17,
+      fontWeight: "700",
+      marginBottom: 4,
+    },
+    cardMeta: { color: t.textMuted, fontSize: 12, marginBottom: 12 },
+    cardMetaTight: { color: t.textMuted, fontSize: 12 },
+    phaseRow: { flexDirection: "row", alignItems: "center", marginBottom: 5 },
+    phaseEmoji: { fontSize: 13, marginRight: 8 },
+    phaseRowName: { color: t.textTertiary, fontSize: 12, flex: 1 },
+    phaseRowNameBreak: { color: t.textDisabled, fontStyle: "italic" },
+    phaseRowDuration: { color: t.accent, fontSize: 12, fontWeight: "600" },
+    phaseRowDurationBreak: { color: t.textDisabled },
+    customCard: {
+      borderColor: t.accent,
+      backgroundColor: t.surfaceActive,
+    },
+    customCardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    customCardEmoji: {
+      fontSize: 24,
+      marginRight: 12,
+    },
+    customArrow: {
+      color: t.accent,
+      fontSize: 20,
+      fontWeight: "700",
+      marginLeft: 8,
+    },
+  });
