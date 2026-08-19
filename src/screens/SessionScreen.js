@@ -6,6 +6,7 @@ import {
   StyleSheet,
   SafeAreaView,
   Alert,
+  Switch,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useKeepAwake } from "expo-keep-awake";
@@ -14,6 +15,7 @@ import { formatTime } from "../utils/formatTime";
 import { useTimer } from "../hooks/useTimer";
 import { useNotifications } from "../hooks/useNotifications";
 import { useAlarmSound } from "../hooks/useAlarmSound";
+import { loadSettings, saveSettings } from "../utils/storage";
 
 /**
  * Session screen — timer, controls, progress, and tips.
@@ -30,6 +32,12 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
   const [showTip, setShowTip] = useState(false);
   const phase = phases[phaseIndex] || null;
 
+  // Auto-advance: when on, a finished phase immediately starts the next one.
+  // Seeded from saved settings but toggleable live during the session.
+  const [autoAdvance, setAutoAdvance] = useState(true);
+  // Which bundled alarm sound plays for background/locked notifications.
+  const [soundPreset, setSoundPreset] = useState("classic");
+
   // Track when the user first presses play (for session history)
   const startedAtRef = useRef(null);
 
@@ -37,34 +45,83 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
   // (only counts time actually elapsed, not skipped time)
   const actualStudySecsRef = useRef(0);
 
-  const { scheduleEndNotification, cancelScheduledNotification } =
-    useNotifications();
+  const { scheduleChain, cancelAll } = useNotifications();
   const { playAlarm } = useAlarmSound();
 
-  // ── Timer ──
-  const handlePhaseComplete = useCallback(() => {
-    playAlarm();
-  }, [playAlarm]);
+  // handlePhaseComplete (defined below) depends on goToPhase/finishSession,
+  // which in turn need the timer's controls — so route the timer's onComplete
+  // through a ref to break the definition-order cycle.
+  const onCompleteRef = useRef(() => {});
+  const fireComplete = useCallback(() => onCompleteRef.current?.(), []);
 
-  const { secondsLeft, running, setRunning, loadDuration, stop } = useTimer({
-    onComplete: handlePhaseComplete,
-  });
+  const { secondsLeft, running, setRunning, loadDuration, stop, restart } =
+    useTimer({ onComplete: fireComplete });
+
+  // Mirror live remaining time into a ref so the scheduling effect can read it
+  // without depending on `secondsLeft` (which would reschedule every tick).
+  const secondsLeftRef = useRef(0);
+  secondsLeftRef.current = secondsLeft;
+
+  // Load saved prefs (auto-advance default + chosen sound) once on mount.
+  useEffect(() => {
+    loadSettings().then((s) => {
+      setAutoAdvance(s.autoAdvance !== false);
+      setSoundPreset(s.soundPreset || "classic");
+    });
+  }, []);
 
   // Load first phase duration on mount
   useEffect(() => {
     loadDuration(phases[0].duration * 60);
   }, [loadDuration, phases]);
 
-  // ── Schedule / cancel notification when running state changes ──
-  useEffect(() => {
-    if (running && phase) {
-      scheduleEndNotification(phase.name, secondsLeft);
-    } else {
-      cancelScheduledNotification();
+  // Build the notification chain. The current phase always fires at its end;
+  // when auto-advance is on we also pre-schedule every subsequent phase
+  // boundary at cumulative offsets, so alarms still fire while the app is
+  // backgrounded (JS timers are frozen in the background).
+  const buildChainItems = useCallback(() => {
+    const current = phases[phaseIndex];
+    if (!current) return [];
+
+    const bodyFor = (completed, idx) => {
+      const upNext = phases[idx + 1];
+      return upNext
+        ? `"${completed.name}" done. Up next: ${upNext.emoji} ${upNext.name}.`
+        : `"${completed.name}" done — session complete! 🎉`;
+    };
+
+    let offset = secondsLeftRef.current;
+    const items = [
+      {
+        seconds: offset,
+        title: "Study Timer ⏰",
+        body: bodyFor(current, phaseIndex),
+      },
+    ];
+
+    if (autoAdvance) {
+      for (let i = phaseIndex + 1; i < phases.length; i++) {
+        offset += phases[i].duration * 60;
+        items.push({
+          seconds: offset,
+          title: "Study Timer ⏰",
+          body: bodyFor(phases[i], i),
+        });
+      }
     }
-    // Only fire when running toggles — secondsLeft and phase are current at toggle time
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running]);
+    return items;
+  }, [phases, phaseIndex, autoAdvance]);
+
+  // ── (Re)schedule or cancel the notification chain ──
+  // Re-runs when the timer starts/stops, the phase changes, auto-advance is
+  // toggled, or the chosen sound changes.
+  useEffect(() => {
+    if (running) {
+      scheduleChain(buildChainItems(), soundPreset);
+    } else {
+      cancelAll();
+    }
+  }, [running, phaseIndex, autoAdvance, soundPreset, buildChainItems, scheduleChain, cancelAll]);
 
   // ── Memoized color calculation (avoids re-computing every second) ──
   const color = useMemo(() => {
@@ -102,44 +159,70 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
 
   // ── Phase navigation ──
   const goToPhase = useCallback(
-    (idx) => {
+    (idx, autoStart = false) => {
       // Accumulate actual study time from the current phase before switching
       if (phase && !phase.isBreak) {
         const spent = phase.duration * 60 - secondsLeft;
         actualStudySecsRef.current += Math.max(0, spent);
       }
 
-      cancelScheduledNotification();
       setPhaseIndex(idx);
-      loadDuration(phases[idx].duration * 60);
       setShowTip(false);
+
+      if (autoStart) {
+        // Roll straight into the next phase; the scheduling effect reschedules
+        // the notification chain off the new phaseIndex.
+        restart(phases[idx].duration * 60);
+      } else {
+        cancelAll();
+        loadDuration(phases[idx].duration * 60);
+      }
     },
-    [cancelScheduledNotification, loadDuration, phases, phase, secondsLeft]
+    [cancelAll, loadDuration, restart, phases, phase, secondsLeft]
   );
+
+  // Finish the whole session (last phase done, or the final phase was skipped).
+  const finishSession = useCallback(() => {
+    if (phase && !phase.isBreak) {
+      const spent = phase.duration * 60 - secondsLeft;
+      actualStudySecsRef.current += Math.max(0, spent);
+    }
+
+    stop();
+    cancelAll();
+
+    const actualStudyMins =
+      Math.round((actualStudySecsRef.current / 60) * 10) / 10;
+    onComplete({ startedAt: startedAtRef.current, actualStudyMins });
+  }, [phase, secondsLeft, stop, cancelAll, onComplete]);
 
   const nextPhase = useCallback(() => {
     if (phaseIndex + 1 < phases.length) {
       goToPhase(phaseIndex + 1);
     } else {
-      // Accumulate the last phase's actual time
-      if (phase && !phase.isBreak) {
-        const spent = phase.duration * 60 - secondsLeft;
-        actualStudySecsRef.current += Math.max(0, spent);
-      }
-
-      stop();
-      cancelScheduledNotification();
-
-      const actualStudyMins =
-        Math.round((actualStudySecsRef.current / 60) * 10) / 10;
-      onComplete({ startedAt: startedAtRef.current, actualStudyMins });
+      finishSession();
     }
-  }, [phaseIndex, phases.length, goToPhase, stop, cancelScheduledNotification, onComplete, phase, secondsLeft]);
+  }, [phaseIndex, phases.length, goToPhase, finishSession]);
+
+  // Called by the timer when a phase hits 0. Always sounds the alarm; when
+  // auto-advance is on, roll into the next phase (or finish the session).
+  const handlePhaseComplete = useCallback(() => {
+    playAlarm(soundPreset);
+    if (!autoAdvance) return;
+    if (phaseIndex + 1 < phases.length) {
+      goToPhase(phaseIndex + 1, true);
+    } else {
+      finishSession();
+    }
+  }, [playAlarm, soundPreset, autoAdvance, phaseIndex, phases.length, goToPhase, finishSession]);
+
+  // Keep the timer's completion callback pointing at the latest closure.
+  onCompleteRef.current = handlePhaseComplete;
 
   const resetPhase = useCallback(() => {
-    cancelScheduledNotification();
+    cancelAll();
     loadDuration(phase.duration * 60);
-  }, [cancelScheduledNotification, loadDuration, phase]);
+  }, [cancelAll, loadDuration, phase]);
 
   // ── Handlers with haptics & confirmation ──
   const handlePlayPause = useCallback(() => {
@@ -178,10 +261,20 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
     resetPhase();
   }, [resetPhase]);
 
+  // Flip auto-advance live and persist the new default for next time.
+  const toggleAutoAdvance = useCallback(() => {
+    Haptics.selectionAsync();
+    setAutoAdvance((prev) => {
+      const next = !prev;
+      saveSettings({ autoAdvance: next });
+      return next;
+    });
+  }, []);
+
   const handleGoHome = useCallback(() => {
     const doLeave = () => {
       stop();
-      cancelScheduledNotification();
+      cancelAll();
 
       // Calculate actual study time for partial save
       if (startedAtRef.current && onPartialQuit) {
@@ -231,7 +324,7 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
     } else {
       doLeave();
     }
-  }, [running, stop, cancelScheduledNotification, onGoHome, onPartialQuit, phases, phaseIndex, phase, secondsLeft]);
+  }, [running, stop, cancelAll, onGoHome, onPartialQuit, phases, phaseIndex, phase, secondsLeft]);
 
   // ── Memoized dynamic styles ──
   const progressFillStyle = useMemo(
@@ -340,6 +433,24 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
         <TouchableOpacity style={styles.circleBtnSmall} onPress={handleSkip}>
           <Text style={styles.circleBtnText}>⏭</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* ── Auto-advance toggle ── */}
+      <View style={styles.autoAdvanceRow}>
+        <View style={styles.autoAdvanceTextWrap}>
+          <Text style={styles.autoAdvanceLabel}>Auto-advance phases</Text>
+          <Text style={styles.autoAdvanceHint}>
+            {autoAdvance
+              ? "Next phase starts automatically"
+              : "Pauses at the end of each phase"}
+          </Text>
+        </View>
+        <Switch
+          value={autoAdvance}
+          onValueChange={toggleAutoAdvance}
+          trackColor={{ false: "#1e2a38", true: color }}
+          thumbColor="#fff"
+        />
       </View>
 
       {/* ── Tip ── */}
@@ -458,6 +569,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   circleBtnBigText: { fontSize: 24 },
+  autoAdvanceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    alignSelf: "center",
+    backgroundColor: "#131920",
+    borderWidth: 1,
+    borderColor: "#1e2a38",
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginTop: 20,
+    width: "86%",
+  },
+  autoAdvanceTextWrap: { flex: 1, paddingRight: 12 },
+  autoAdvanceLabel: { color: "#f0f6ff", fontSize: 14, fontWeight: "700" },
+  autoAdvanceHint: { color: "#556070", fontSize: 11, marginTop: 2 },
   tipBtn: {
     alignSelf: "center",
     borderWidth: 1,

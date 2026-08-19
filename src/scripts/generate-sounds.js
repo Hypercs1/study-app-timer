@@ -44,7 +44,7 @@ const classicBuf = createWavBuffer(Math.floor(SAMPLE_RATE * 1.8), (t) => {
   }
   return 0;
 });
-fs.writeFileSync(path.join(outDir, "alarm-classic.wav"), classicBuf);
+fs.writeFileSync(path.join(outDir, "alarm_classic.wav"), classicBuf);
 
 // 2. Pleasant Chime (Three rising notes: C5, E5, G5)
 const chimeBuf = createWavBuffer(Math.floor(SAMPLE_RATE * 2.2), (t) => {
@@ -60,7 +60,7 @@ const chimeBuf = createWavBuffer(Math.floor(SAMPLE_RATE * 2.2), (t) => {
   const decay = Math.exp(-localT * 3.5);
   return Math.sin(2 * Math.PI * note * t) * 0.65 * decay;
 });
-fs.writeFileSync(path.join(outDir, "alarm-chime.wav"), chimeBuf);
+fs.writeFileSync(path.join(outDir, "alarm_chime.wav"), chimeBuf);
 
 // 3. Resonant Bell (A4 note with harmonic overtones and bell decay)
 const bellBuf = createWavBuffer(Math.floor(SAMPLE_RATE * 2.5), (t) => {
@@ -72,7 +72,7 @@ const bellBuf = createWavBuffer(Math.floor(SAMPLE_RATE * 2.5), (t) => {
     Math.sin(2 * Math.PI * f * 3.01 * t) * 0.15;
   return tone * decay;
 });
-fs.writeFileSync(path.join(outDir, "alarm-bell.wav"), bellBuf);
+fs.writeFileSync(path.join(outDir, "alarm_bell.wav"), bellBuf);
 
 // 4. Marimba Melody (Short wooden marimba rhythm)
 const marimbaBuf = createWavBuffer(Math.floor(SAMPLE_RATE * 2.0), (t) => {
@@ -84,6 +84,6 @@ const marimbaBuf = createWavBuffer(Math.floor(SAMPLE_RATE * 2.0), (t) => {
   const tone = Math.sin(2 * Math.PI * freq * t) + 0.3 * Math.sin(2 * Math.PI * freq * 3 * t);
   return tone * 0.5 * decay;
 });
-fs.writeFileSync(path.join(outDir, "alarm-marimba.wav"), marimbaBuf);
+fs.writeFileSync(path.join(outDir, "alarm_marimba.wav"), marimbaBuf);
 
 console.log("All sound assets generated successfully in assets/");

@@ -11,6 +11,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 export function useTimer({ onComplete } = {}) {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [running, setRunning] = useState(false);
+  // Bumped by restart() to force the countdown effect to re-run even when
+  // `running` was already true (used when auto-advancing into the next phase).
+  const [runToken, setRunToken] = useState(0);
 
   const targetEndRef = useRef(null);
   const intervalRef = useRef(null);
@@ -50,7 +53,7 @@ export function useTimer({ onComplete } = {}) {
     }
 
     return () => clearInterval(intervalRef.current);
-  }, [running]);
+  }, [running, runToken]);
 
   /**
    * Set the timer to a new duration (in seconds) and pause it.
@@ -71,5 +74,18 @@ export function useTimer({ onComplete } = {}) {
     setRunning(false);
   }, []);
 
-  return { secondsLeft, running, setRunning, loadDuration, stop };
+  /**
+   * Set a new duration (in seconds) and immediately start the countdown.
+   * Bumps runToken so the effect restarts even if `running` was already true
+   * (e.g. rolling straight from one phase into the next on auto-advance).
+   */
+  const restart = useCallback((secs) => {
+    clearInterval(intervalRef.current);
+    setSecondsLeft(secs);
+    secondsLeftRef.current = secs;
+    setRunning(true);
+    setRunToken((t) => t + 1);
+  }, []);
+
+  return { secondsLeft, running, setRunning, loadDuration, stop, restart };
 }
