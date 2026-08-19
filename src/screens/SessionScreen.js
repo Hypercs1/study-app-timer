@@ -13,6 +13,7 @@ import * as Haptics from "expo-haptics";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { studyColors, breakColor } from "../constants/sessions";
 import { formatTime } from "../utils/formatTime";
+import { phaseElapsedSecs, minsFromSecs } from "../utils/studyTime";
 import { useTimer } from "../hooks/useTimer";
 import { useNotifications } from "../hooks/useNotifications";
 import { useAlarmSound } from "../hooks/useAlarmSound";
@@ -195,10 +196,8 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
   const goToPhase = useCallback(
     (idx, autoStart = false) => {
       // Accumulate actual study time from the current phase before switching
-      if (phase && !phase.isBreak) {
-        const spent = phase.duration * 60 - secondsLeft;
-        actualStudySecsRef.current += Math.max(0, spent);
-      }
+      // (0 for breaks; only real elapsed time, not the full phase length).
+      actualStudySecsRef.current += phaseElapsedSecs(phase, secondsLeft);
 
       setPhaseIndex(idx);
       setShowTip(false);
@@ -217,16 +216,12 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
 
   // Finish the whole session (last phase done, or the final phase was skipped).
   const finishSession = useCallback(() => {
-    if (phase && !phase.isBreak) {
-      const spent = phase.duration * 60 - secondsLeft;
-      actualStudySecsRef.current += Math.max(0, spent);
-    }
+    actualStudySecsRef.current += phaseElapsedSecs(phase, secondsLeft);
 
     stop();
     cancelAll();
 
-    const actualStudyMins =
-      Math.round((actualStudySecsRef.current / 60) * 10) / 10;
+    const actualStudyMins = minsFromSecs(actualStudySecsRef.current);
     onComplete({ startedAt: startedAtRef.current, actualStudyMins });
   }, [phase, secondsLeft, stop, cancelAll, onComplete]);
 
@@ -311,20 +306,14 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
       stop();
       cancelAll();
 
-      // Calculate actual study time for partial save
+      // Calculate actual study time for partial save. Use the same
+      // accumulated-elapsed basis as finishSession, so quitting credits exactly
+      // what a normal finish would for the same elapsed time — phases skipped
+      // early are not credited their full nominal length.
       if (startedAtRef.current && onPartialQuit) {
-        const completedStudyMins = phases
-          .slice(0, phaseIndex)
-          .filter((p) => !p.isBreak)
-          .reduce((a, p) => a + p.duration, 0);
-
-        const currentPhaseMins =
-          phase && !phase.isBreak
-            ? Math.max(0, (phase.duration * 60 - secondsLeft) / 60)
-            : 0;
-
-        const actualStudyMins =
-          Math.round((completedStudyMins + currentPhaseMins) * 10) / 10;
+        const actualStudyMins = minsFromSecs(
+          actualStudySecsRef.current + phaseElapsedSecs(phase, secondsLeft)
+        );
 
         const completedStudyPhases = phases
           .slice(0, phaseIndex)
