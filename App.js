@@ -1,5 +1,7 @@
 import React, { useState, useCallback } from "react";
+import { StatusBar } from "react-native";
 import ErrorBoundary from "./src/components/ErrorBoundary";
+import { ThemeProvider, useTheme } from "./src/theme/ThemeContext";
 import HomeScreen from "./src/screens/HomeScreen";
 import SubjectPickerScreen from "./src/screens/SubjectPickerScreen";
 import SessionPickerScreen from "./src/screens/SessionPickerScreen";
@@ -127,7 +129,9 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      {screen === "home" && (
+      <ThemeProvider>
+        <ThemedStatusBar />
+        {screen === "home" && (
         <HomeScreen
           onStartStudying={startStudying}
           onViewStats={viewStats}
@@ -149,6 +153,7 @@ export default function App() {
           subjectColor={subjectColor}
           onStartSession={handleStartSession}
           onOpenCustomSession={openCustomSessionBuilder}
+          onStartTemplate={handleStartCustomSession}
           onGoBack={goBackToSubjectPicker}
         />
       )}
@@ -186,6 +191,19 @@ export default function App() {
       {screen === "stats" && <StatsScreen onGoHome={goHome} />}
 
       {screen === "settings" && <SettingsScreen onGoHome={goHome} />}
+      </ThemeProvider>
     </ErrorBoundary>
+  );
+}
+
+// Drives the OS status-bar glyphs from the active theme so the clock/battery
+// stay legible in light mode. Lives inside ThemeProvider so it can read it.
+function ThemedStatusBar() {
+  const { theme } = useTheme();
+  return (
+    <StatusBar
+      barStyle={theme.isDark ? "light-content" : "dark-content"}
+      backgroundColor={theme.bg}
+    />
   );
 }

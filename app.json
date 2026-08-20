@@ -30,7 +30,8 @@
             "./assets/alarm_marimba.wav"
           ]
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "extra": {
       "eas": {

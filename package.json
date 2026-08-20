@@ -5,14 +5,22 @@
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
-    "ios": "expo start --ios"
+    "ios": "expo start --ios",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "setupFiles": [
+      "<rootDir>/jest.setup.js"
+    ]
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/slider": "5.0.1",
     "expo": "54",
-    "expo-av": "~16.0.8",
+    "expo-audio": "~1.1.1",
     "expo-dev-client": "~6.0.21",
     "expo-haptics": "~15.0.8",
     "expo-keep-awake": "~15.0.8",
@@ -21,5 +29,9 @@
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-web": "^0.21.0"
+  },
+  "devDependencies": {
+    "jest": "~29.7.0",
+    "jest-expo": "~54.0.18"
   }
 }

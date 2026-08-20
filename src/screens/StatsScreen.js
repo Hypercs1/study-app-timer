@@ -8,6 +8,7 @@ import {
   ScrollView,
 } from "react-native";
 import { loadSessions, loadSubjects } from "../utils/storage";
+import { useTheme } from "../theme/ThemeContext";
 
 const TABS = ["Day", "Week", "Month", "All"];
 
@@ -57,6 +58,9 @@ function formatDuration(mins) {
  * @param {{ onGoHome: () => void }} props
  */
 export default function StatsScreen({ onGoHome }) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   const [sessions, setSessions] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [activeTab, setActiveTab] = useState("Week");
@@ -112,7 +116,12 @@ export default function StatsScreen({ onGoHome }) {
     <SafeAreaView style={styles.container}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onGoHome} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={onGoHome}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go home"
+        >
           <Text style={styles.backBtnText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>📊 Stats</Text>
@@ -126,6 +135,9 @@ export default function StatsScreen({ onGoHome }) {
             key={tab}
             style={[styles.tab, activeTab === tab && styles.tabActive]}
             onPress={() => setActiveTab(tab)}
+            accessibilityRole="button"
+            accessibilityLabel={`Show ${tab} stats`}
+            accessibilityState={{ selected: activeTab === tab }}
           >
             <Text
               style={[
@@ -169,7 +181,7 @@ export default function StatsScreen({ onGoHome }) {
             {/* ── Per-subject breakdown ── */}
             {stats.subjects.map((s) => {
               const color =
-                subjectColorMap[s.name.toLowerCase()] || "#556070";
+                subjectColorMap[s.name.toLowerCase()] || theme.textMuted;
               const pct =
                 stats.totalMins > 0 ? (s.mins / stats.totalMins) * 100 : 0;
 
@@ -212,133 +224,134 @@ export default function StatsScreen({ onGoHome }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#090d14" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  backBtn: {
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  backBtnText: { color: "#aab4c8", fontSize: 18 },
-  headerTitle: { color: "#f0f6ff", fontSize: 16, fontWeight: "700" },
-  spacer: { width: 40 },
-  tabRow: {
-    flexDirection: "row",
-    marginHorizontal: 20,
-    backgroundColor: "#131920",
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 8,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  tabActive: {
-    backgroundColor: "#1e2a38",
-  },
-  tabText: {
-    color: "#556070",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  tabTextActive: {
-    color: "#f0f6ff",
-  },
-  scroll: { padding: 20, paddingTop: 12 },
-  emptyWrap: { alignItems: "center", marginTop: 60 },
-  emptyEmoji: { fontSize: 48, marginBottom: 12 },
-  emptyTitle: {
-    color: "#f0f6ff",
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 6,
-  },
-  emptyText: {
-    color: "#556070",
-    fontSize: 13,
-    textAlign: "center",
-    maxWidth: 220,
-  },
-  totalCard: {
-    backgroundColor: "#131920",
-    borderWidth: 1.5,
-    borderColor: "#1e2a38",
-    borderRadius: 16,
-    padding: 20,
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  totalLabel: {
-    color: "#556070",
-    fontSize: 12,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  totalValue: {
-    color: "#f0f6ff",
-    fontSize: 36,
-    fontWeight: "800",
-    marginTop: 4,
-  },
-  totalSub: {
-    color: "#556070",
-    fontSize: 12,
-    marginTop: 4,
-  },
-  subjectCard: {
-    backgroundColor: "#131920",
-    borderWidth: 1.5,
-    borderColor: "#1e2a38",
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 10,
-  },
-  subjectTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  colorDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 10,
-  },
-  subjectName: {
-    color: "#f0f6ff",
-    fontSize: 15,
-    fontWeight: "600",
-    flex: 1,
-  },
-  subjectTime: {
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  barBg: {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    height: 6,
-    borderRadius: 3,
-    marginBottom: 8,
-  },
-  barFill: {
-    height: 6,
-    borderRadius: 3,
-  },
-  subjectMeta: {
-    color: "#556070",
-    fontSize: 11,
-  },
-});
+const makeStyles = (t) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: t.bg },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingTop: 12,
+      paddingBottom: 8,
+    },
+    backBtn: {
+      backgroundColor: t.hairline,
+      borderRadius: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+    },
+    backBtnText: { color: t.textSecondary, fontSize: 18 },
+    headerTitle: { color: t.textPrimary, fontSize: 16, fontWeight: "700" },
+    spacer: { width: 40 },
+    tabRow: {
+      flexDirection: "row",
+      marginHorizontal: 20,
+      backgroundColor: t.surface,
+      borderRadius: 12,
+      padding: 4,
+      marginBottom: 8,
+    },
+    tab: {
+      flex: 1,
+      paddingVertical: 10,
+      borderRadius: 10,
+      alignItems: "center",
+    },
+    tabActive: {
+      backgroundColor: t.border,
+    },
+    tabText: {
+      color: t.textMuted,
+      fontSize: 13,
+      fontWeight: "600",
+    },
+    tabTextActive: {
+      color: t.textPrimary,
+    },
+    scroll: { padding: 20, paddingTop: 12 },
+    emptyWrap: { alignItems: "center", marginTop: 60 },
+    emptyEmoji: { fontSize: 48, marginBottom: 12 },
+    emptyTitle: {
+      color: t.textPrimary,
+      fontSize: 18,
+      fontWeight: "700",
+      marginBottom: 6,
+    },
+    emptyText: {
+      color: t.textMuted,
+      fontSize: 13,
+      textAlign: "center",
+      maxWidth: 220,
+    },
+    totalCard: {
+      backgroundColor: t.surface,
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 16,
+      padding: 20,
+      alignItems: "center",
+      marginBottom: 20,
+    },
+    totalLabel: {
+      color: t.textMuted,
+      fontSize: 12,
+      fontWeight: "600",
+      textTransform: "uppercase",
+      letterSpacing: 1,
+    },
+    totalValue: {
+      color: t.textPrimary,
+      fontSize: 36,
+      fontWeight: "800",
+      marginTop: 4,
+    },
+    totalSub: {
+      color: t.textMuted,
+      fontSize: 12,
+      marginTop: 4,
+    },
+    subjectCard: {
+      backgroundColor: t.surface,
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 14,
+      padding: 16,
+      marginBottom: 10,
+    },
+    subjectTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 10,
+    },
+    colorDot: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      marginRight: 10,
+    },
+    subjectName: {
+      color: t.textPrimary,
+      fontSize: 15,
+      fontWeight: "600",
+      flex: 1,
+    },
+    subjectTime: {
+      fontSize: 15,
+      fontWeight: "700",
+    },
+    barBg: {
+      backgroundColor: t.progressTrack,
+      height: 6,
+      borderRadius: 3,
+      marginBottom: 8,
+    },
+    barFill: {
+      height: 6,
+      borderRadius: 3,
+    },
+    subjectMeta: {
+      color: t.textMuted,
+      fontSize: 11,
+    },
+  });

@@ -4,6 +4,34 @@ import { generateId } from "./generateId";
 const STORAGE_KEY = "@study_timer/sessions";
 const SUBJECTS_KEY = "@study_timer/subjects";
 
+// ────────────────────────────────────────────
+//  Per-key write serialization
+// ────────────────────────────────────────────
+// Every mutating helper below is read-modify-write (load → change → setItem).
+// If two run concurrently they can read the same snapshot and the later write
+// clobbers the earlier one (lost update) — reachable in-app, e.g. the session
+// screen's auto-advance toggle saving settings while the settings screen also
+// saves. withKeyLock chains operations that touch the same key so they run one
+// at a time; operations on different keys still run in parallel.
+const keyLocks = new Map();
+
+function withKeyLock(key, task) {
+  const prev = keyLocks.get(key) || Promise.resolve();
+  // Run `task` after whatever is already queued for this key, whether that
+  // prior operation resolved or rejected.
+  const run = prev.then(task, task);
+  // Keep the chain alive for the next caller without letting a rejection wedge
+  // the key. Callers still receive the real result/rejection via `run`.
+  keyLocks.set(
+    key,
+    run.then(
+      () => {},
+      () => {}
+    )
+  );
+  return run;
+}
+
 // ── Preset colors for auto-assigning to new subjects ──
 const SUBJECT_COLORS = [
   "#4f8ef7", // blue
@@ -46,19 +74,21 @@ export async function saveSubject(name) {
   const trimmed = name.trim();
   if (!trimmed) return { name: "Unspecified", color: SUBJECT_COLORS[0] };
 
-  const subjects = await loadSubjects();
-  const existing = subjects.find(
-    (s) => s.name.toLowerCase() === trimmed.toLowerCase()
-  );
-  if (existing) return existing;
+  return withKeyLock(SUBJECTS_KEY, async () => {
+    const subjects = await loadSubjects();
+    const existing = subjects.find(
+      (s) => s.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (existing) return existing;
 
-  const color = SUBJECT_COLORS[subjects.length % SUBJECT_COLORS.length];
-  const newSubject = { name: trimmed, color };
-  await AsyncStorage.setItem(
-    SUBJECTS_KEY,
-    JSON.stringify([...subjects, newSubject])
-  );
-  return newSubject;
+    const color = SUBJECT_COLORS[subjects.length % SUBJECT_COLORS.length];
+    const newSubject = { name: trimmed, color };
+    await AsyncStorage.setItem(
+      SUBJECTS_KEY,
+      JSON.stringify([...subjects, newSubject])
+    );
+    return newSubject;
+  });
 }
 
 /**
@@ -68,11 +98,13 @@ export async function saveSubject(name) {
  * @param {string} color - New hex color
  */
 export async function updateSubjectColor(name, color) {
-  const subjects = await loadSubjects();
-  const updated = subjects.map((s) =>
-    s.name.toLowerCase() === name.toLowerCase() ? { ...s, color } : s
-  );
-  await AsyncStorage.setItem(SUBJECTS_KEY, JSON.stringify(updated));
+  return withKeyLock(SUBJECTS_KEY, async () => {
+    const subjects = await loadSubjects();
+    const updated = subjects.map((s) =>
+      s.name.toLowerCase() === name.toLowerCase() ? { ...s, color } : s
+    );
+    await AsyncStorage.setItem(SUBJECTS_KEY, JSON.stringify(updated));
+  });
 }
 
 // ────────────────────────────────────────────
@@ -117,13 +149,16 @@ export async function saveSession({
     completed,
   };
 
-  // Ensure the subject exists in our subjects list
+  // Ensure the subject exists in our subjects list (locks SUBJECTS_KEY).
   await saveSubject(record.subject);
 
-  const existing = await loadSessions();
-  const updated = [record, ...existing];
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-  return record;
+  // Serialize the sessions read-modify-write on STORAGE_KEY.
+  return withKeyLock(STORAGE_KEY, async () => {
+    const existing = await loadSessions();
+    const updated = [record, ...existing];
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    return record;
+  });
 }
 
 /**
@@ -148,9 +183,11 @@ export async function loadSessions() {
  * @param {string} id - The session id to delete
  */
 export async function deleteSession(id) {
-  const sessions = await loadSessions();
-  const updated = sessions.filter((s) => s.id !== id);
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  return withKeyLock(STORAGE_KEY, async () => {
+    const sessions = await loadSessions();
+    const updated = sessions.filter((s) => s.id !== id);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  });
 }
 
 /**
@@ -160,11 +197,11 @@ export async function deleteSession(id) {
  * @param {Object} updates - Fields to merge into the record
  */
 export async function updateSession(id, updates) {
-  const sessions = await loadSessions();
-  const updated = sessions.map((s) =>
-    s.id === id ? { ...s, ...updates } : s
-  );
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  return withKeyLock(STORAGE_KEY, async () => {
+    const sessions = await loadSessions();
+    const updated = sessions.map((s) => (s.id === id ? { ...s, ...updates } : s));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  });
 }
 
 /**
@@ -172,6 +209,66 @@ export async function updateSession(id, updates) {
  */
 export async function clearSessions() {
   await AsyncStorage.removeItem(STORAGE_KEY);
+}
+
+// ────────────────────────────────────────────
+//  Custom session templates
+// ────────────────────────────────────────────
+// A template is a reusable custom session the user built in CustomSessionScreen:
+// { id, label, phases: [{ name, duration, emoji, isBreak, tip }] } — the same
+// shape as the built-in SESSIONS entries plus an id. Launched through the normal
+// custom-session path, so no special-casing is needed downstream.
+
+const TEMPLATES_KEY = "@study_timer/templates";
+
+/**
+ * Load all saved custom-session templates (newest first). [] if none.
+ * @returns {Promise<Array<{ id: string, label: string, phases: Array }>>}
+ */
+export async function loadTemplates() {
+  try {
+    const raw = await AsyncStorage.getItem(TEMPLATES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.warn("Failed to load templates:", e);
+    return [];
+  }
+}
+
+/**
+ * Save a custom-session template. Assigns an id and prepends so newest come
+ * first. Serialized on TEMPLATES_KEY so concurrent saves don't clobber.
+ *
+ * @param {{ label: string, phases: Array }} template
+ * @returns {Promise<{ id: string, label: string, phases: Array }>} the stored record
+ */
+export async function saveTemplate({ label, phases }) {
+  const record = {
+    id: generateId(),
+    label: (label && label.trim()) || "Custom Session",
+    phases: phases || [],
+  };
+
+  return withKeyLock(TEMPLATES_KEY, async () => {
+    const existing = await loadTemplates();
+    await AsyncStorage.setItem(
+      TEMPLATES_KEY,
+      JSON.stringify([record, ...existing])
+    );
+    return record;
+  });
+}
+
+/**
+ * Delete a single template by id.
+ * @param {string} id
+ */
+export async function deleteTemplate(id) {
+  return withKeyLock(TEMPLATES_KEY, async () => {
+    const templates = await loadTemplates();
+    const updated = templates.filter((t) => t.id !== id);
+    await AsyncStorage.setItem(TEMPLATES_KEY, JSON.stringify(updated));
+  });
 }
 
 // ────────────────────────────────────────────
@@ -201,14 +298,17 @@ export async function loadSettings() {
 }
 
 /**
- * Save user settings to local storage.
+ * Save user settings to local storage. Merges the given fields over the current
+ * saved settings; serialized on SETTINGS_KEY so concurrent saves don't clobber.
  */
 export async function saveSettings(settings) {
   try {
-    const current = await loadSettings();
-    const updated = { ...current, ...settings };
-    await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
-    return updated;
+    return await withKeyLock(SETTINGS_KEY, async () => {
+      const current = await loadSettings();
+      const updated = { ...current, ...settings };
+      await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
+      return updated;
+    });
   } catch (e) {
     console.warn("Failed to save settings", e);
     return DEFAULT_SETTINGS;

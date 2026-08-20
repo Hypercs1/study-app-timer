@@ -10,6 +10,8 @@ import {
   Alert,
 } from "react-native";
 import Slider from "@react-native-community/slider";
+import { saveTemplate } from "../utils/storage";
+import { useTheme } from "../theme/ThemeContext";
 
 const PRESET_TAGS = [
   { name: "Deep Study", emoji: "📖", isBreak: false, tip: "Focused, deep work session." },
@@ -29,6 +31,7 @@ const TIME_PILLS = [15, 30, 45, 60, 90, 120];
  * 1. Choose overall session duration (in minutes).
  * 2. Add preset or custom tags (study tasks or breaks).
  * 3. Use sliders/+/- buttons to assign time per tag without exceeding total session duration.
+ * 4. Save the built session as a reusable template.
  */
 export default function CustomSessionScreen({
   subject,
@@ -36,8 +39,12 @@ export default function CustomSessionScreen({
   onStartCustomSession,
   onGoBack,
 }) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   const [totalMins, setTotalMins] = useState(30);
   const [customTotalInput, setCustomTotalInput] = useState("30");
+  const [templateName, setTemplateName] = useState("");
   const [tasks, setTasks] = useState([
     {
       id: "1",
@@ -176,6 +183,19 @@ export default function CustomSessionScreen({
     [totalMins]
   );
 
+  // Build the phase list from the current tasks (shared by Start and Save).
+  const buildPhases = useCallback(
+    () =>
+      tasks.map((t) => ({
+        name: t.name,
+        duration: t.duration,
+        emoji: t.emoji,
+        isBreak: t.isBreak,
+        tip: t.tip,
+      })),
+    [tasks]
+  );
+
   // Start the custom session
   const handleStart = useCallback(() => {
     if (tasks.length === 0) {
@@ -183,27 +203,41 @@ export default function CustomSessionScreen({
       return;
     }
 
-    const phases = tasks.map((t) => ({
-      name: t.name,
-      duration: t.duration,
-      emoji: t.emoji,
-      isBreak: t.isBreak,
-      tip: t.tip,
-    }));
-
-    const sessionObj = {
+    onStartCustomSession({
       label: `Custom Session (${totalMins}m)`,
-      phases,
-    };
+      phases: buildPhases(),
+    });
+  }, [tasks, totalMins, buildPhases, onStartCustomSession]);
 
-    onStartCustomSession(sessionObj);
-  }, [tasks, totalMins, onStartCustomSession]);
+  // Save the built session as a reusable template
+  const handleSaveTemplate = useCallback(async () => {
+    if (tasks.length === 0) {
+      Alert.alert("Nothing to Save", "Add at least one study task or break before saving a template.");
+      return;
+    }
+
+    const label = templateName.trim() || `Custom Session (${totalMins}m)`;
+    try {
+      await saveTemplate({ label, phases: buildPhases() });
+      Alert.alert(
+        "Template Saved",
+        `"${label}" is now under Your Templates on the session picker.`
+      );
+    } catch (e) {
+      Alert.alert("Save Failed", "Could not save the template. Please try again.");
+    }
+  }, [tasks, templateName, totalMins, buildPhases]);
 
   return (
     <SafeAreaView style={styles.container}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onGoBack} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={onGoBack}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Text style={styles.backBtnText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Build Custom Session</Text>
@@ -216,7 +250,7 @@ export default function CustomSessionScreen({
           <View
             style={[
               styles.colorDot,
-              { backgroundColor: subjectColor || "#4f8ef7" },
+              { backgroundColor: subjectColor || theme.accent },
             ]}
           />
           <Text style={styles.subjectText}>{subject}</Text>
@@ -234,6 +268,9 @@ export default function CustomSessionScreen({
                   totalMins === mins && styles.timePillActive,
                 ]}
                 onPress={() => handleSetTotalMins(mins)}
+                accessibilityRole="button"
+                accessibilityLabel={`Set total time to ${mins} minutes`}
+                accessibilityState={{ selected: totalMins === mins }}
               >
                 <Text
                   style={[
@@ -279,6 +316,8 @@ export default function CustomSessionScreen({
                   tag.isBreak && styles.presetTagBreak,
                 ]}
                 onPress={() => handleAddTask(tag)}
+                accessibilityRole="button"
+                accessibilityLabel={`Add ${tag.name}`}
               >
                 <Text style={styles.presetTagEmoji}>{tag.emoji}</Text>
                 <Text style={styles.presetTagText}>{tag.name}</Text>
@@ -292,7 +331,7 @@ export default function CustomSessionScreen({
             <TextInput
               style={[styles.textInput, { flex: 1, marginRight: 8 }]}
               placeholder="e.g. Solve 5 problems"
-              placeholderTextColor="#556070"
+              placeholderTextColor={theme.textMuted}
               value={customTagName}
               onChangeText={setCustomTagName}
             />
@@ -302,6 +341,10 @@ export default function CustomSessionScreen({
                 isCustomBreak && styles.typeToggleBreak,
               ]}
               onPress={() => setIsCustomBreak((b) => !b)}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isCustomBreak ? "Tag type: break, tap for study" : "Tag type: study, tap for break"
+              }
             >
               <Text style={styles.typeToggleText}>
                 {isCustomBreak ? "☕ Break" : "📖 Study"}
@@ -310,6 +353,8 @@ export default function CustomSessionScreen({
             <TouchableOpacity
               style={styles.addCustomBtn}
               onPress={() => handleAddTask(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Add custom tag"
             >
               <Text style={styles.addCustomBtnText}>Add</Text>
             </TouchableOpacity>
@@ -339,7 +384,7 @@ export default function CustomSessionScreen({
           {tasks.length === 0 ? (
             <Text style={styles.emptyTasksText}>No tasks added yet. Tap a tag above to add one!</Text>
           ) : (
-            tasks.map((t, idx) => (
+            tasks.map((t) => (
               <View key={t.id} style={styles.taskItem}>
                 <View style={styles.taskTopRow}>
                   <Text style={styles.taskEmoji}>{t.emoji}</Text>
@@ -350,6 +395,8 @@ export default function CustomSessionScreen({
                   <TouchableOpacity
                     onPress={() => handleRemoveTask(t.id)}
                     style={styles.deleteBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${t.name}`}
                   >
                     <Text style={styles.deleteText}>✕</Text>
                   </TouchableOpacity>
@@ -360,6 +407,8 @@ export default function CustomSessionScreen({
                   <TouchableOpacity
                     style={styles.stepBtn}
                     onPress={() => handleTaskDurationChange(t.id, t.duration - 1)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Decrease ${t.name} minutes`}
                   >
                     <Text style={styles.stepBtnText}>-</Text>
                   </TouchableOpacity>
@@ -370,15 +419,17 @@ export default function CustomSessionScreen({
                     maximumValue={totalMins}
                     step={1}
                     value={t.duration}
-                    minimumTrackTintColor={t.isBreak ? "#778899" : "#4f8ef7"}
-                    maximumTrackTintColor="#1e2a38"
-                    thumbTintColor={t.isBreak ? "#aab4c8" : "#4f8ef7"}
+                    minimumTrackTintColor={t.isBreak ? theme.neutral : theme.accent}
+                    maximumTrackTintColor={theme.border}
+                    thumbTintColor={t.isBreak ? theme.textSecondary : theme.accent}
                     onValueChange={(val) => handleTaskDurationChange(t.id, val)}
                   />
 
                   <TouchableOpacity
                     style={styles.stepBtn}
                     onPress={() => handleTaskDurationChange(t.id, t.duration + 1)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Increase ${t.name} minutes`}
                   >
                     <Text style={styles.stepBtnText}>+</Text>
                   </TouchableOpacity>
@@ -386,6 +437,26 @@ export default function CustomSessionScreen({
               </View>
             ))
           )}
+        </View>
+
+        {/* ── Save as Template ── */}
+        <View style={styles.saveTemplateRow}>
+          <TextInput
+            style={styles.templateNameInput}
+            placeholder={`Custom Session (${totalMins}m)`}
+            placeholderTextColor={theme.textMuted}
+            value={templateName}
+            onChangeText={setTemplateName}
+          />
+          <TouchableOpacity
+            style={[styles.saveTemplateBtn, tasks.length === 0 && styles.saveTemplateBtnDisabled]}
+            onPress={handleSaveTemplate}
+            disabled={tasks.length === 0}
+            accessibilityRole="button"
+            accessibilityLabel="Save as template"
+          >
+            <Text style={styles.saveTemplateBtnText}>💾 Save</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Start Button ── */}
@@ -401,198 +472,228 @@ export default function CustomSessionScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#090d14" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  backBtn: {
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  backBtnText: { color: "#aab4c8", fontSize: 18 },
-  headerTitle: { color: "#f0f6ff", fontSize: 16, fontWeight: "700" },
-  spacer: { width: 40 },
-  scroll: { padding: 20, paddingTop: 10 },
-  subjectBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "center",
-    backgroundColor: "#131920",
-    borderWidth: 1.5,
-    borderColor: "#1e2a38",
-    borderRadius: 16,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    marginBottom: 16,
-  },
-  colorDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
-  subjectText: { color: "#f0f6ff", fontSize: 12, fontWeight: "600" },
-  card: {
-    backgroundColor: "#131920",
-    borderWidth: 1.5,
-    borderColor: "#1e2a38",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  cardHeader: {
-    color: "#f0f6ff",
-    fontSize: 15,
-    fontWeight: "700",
-    marginBottom: 12,
-  },
-  pillRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 12,
-  },
-  timePill: {
-    backgroundColor: "#0d1117",
-    borderWidth: 1,
-    borderColor: "#1e2a38",
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-  },
-  timePillActive: {
-    backgroundColor: "#4f8ef7",
-    borderColor: "#4f8ef7",
-  },
-  timePillText: { color: "#9ab", fontSize: 13, fontWeight: "600" },
-  timePillTextActive: { color: "#fff" },
-  customInputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 4,
-  },
-  inputLabel: { color: "#556070", fontSize: 13, marginRight: 10 },
-  textInput: {
-    color: "#f0f6ff",
-    fontSize: 14,
-    backgroundColor: "#0d1117",
-    borderWidth: 1,
-    borderColor: "#1e2a38",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  unitText: { color: "#556070", fontSize: 13, marginLeft: 8 },
-  subLabel: { color: "#9ab", fontSize: 12, fontWeight: "600", marginBottom: 8 },
-  tagGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  presetTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#0d1117",
-    borderWidth: 1,
-    borderColor: "#1e2a38",
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  presetTagBreak: {
-    borderColor: "rgba(119, 136, 153, 0.4)",
-  },
-  presetTagEmoji: { fontSize: 13, marginRight: 6 },
-  presetTagText: { color: "#f0f6ff", fontSize: 12, fontWeight: "500", marginRight: 6 },
-  addPlus: { color: "#4f8ef7", fontSize: 14, fontWeight: "700" },
-  customTagRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  typeToggle: {
-    backgroundColor: "#0d1117",
-    borderWidth: 1,
-    borderColor: "#1e2a38",
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    marginRight: 8,
-  },
-  typeToggleBreak: {
-    borderColor: "#778899",
-  },
-  typeToggleText: { color: "#9ab", fontSize: 12 },
-  addCustomBtn: {
-    backgroundColor: "#4f8ef7",
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-  },
-  addCustomBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  allocationHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  allocationSummary: { fontSize: 13, fontWeight: "700" },
-  allocPerfect: { color: "#4caf6e" },
-  allocWarn: { color: "#e0a030" },
-  remainingHint: { color: "#4f8ef7", fontSize: 12, marginBottom: 10 },
-  emptyTasksText: { color: "#556070", fontSize: 13, fontStyle: "italic", textAlign: "center", marginVertical: 12 },
-  taskItem: {
-    backgroundColor: "#0d1117",
-    borderWidth: 1,
-    borderColor: "#1e2a38",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-  },
-  taskTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  taskEmoji: { fontSize: 15, marginRight: 8 },
-  taskName: { color: "#f0f6ff", fontSize: 14, fontWeight: "600", flex: 1 },
-  taskDurationText: { color: "#4f8ef7", fontSize: 14, fontWeight: "700", marginRight: 10 },
-  breakText: { color: "#778899" },
-  deleteBtn: { padding: 4 },
-  deleteText: { color: "#e06070", fontSize: 14, fontWeight: "700" },
-  sliderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  stepBtn: {
-    backgroundColor: "#1e2a38",
-    borderRadius: 8,
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stepBtnText: { color: "#f0f6ff", fontSize: 16, fontWeight: "700" },
-  slider: {
-    flex: 1,
-    height: 40,
-    marginHorizontal: 8,
-  },
-  startBtn: {
-    backgroundColor: "#4f8ef7",
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: "center",
-    marginBottom: 40,
-  },
-  startBtnDisabled: {
-    backgroundColor: "#1e2a38",
-    opacity: 0.5,
-  },
-  startBtnText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-});
+const makeStyles = (t) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: t.bg },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingTop: 12,
+      paddingBottom: 8,
+    },
+    backBtn: {
+      backgroundColor: t.hairline,
+      borderRadius: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+    },
+    backBtnText: { color: t.textSecondary, fontSize: 18 },
+    headerTitle: { color: t.textPrimary, fontSize: 16, fontWeight: "700" },
+    spacer: { width: 40 },
+    scroll: { padding: 20, paddingTop: 10 },
+    subjectBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "center",
+      backgroundColor: t.surface,
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 16,
+      paddingVertical: 6,
+      paddingHorizontal: 14,
+      marginBottom: 16,
+    },
+    colorDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
+    subjectText: { color: t.textPrimary, fontSize: 12, fontWeight: "600" },
+    card: {
+      backgroundColor: t.surface,
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 16,
+    },
+    cardHeader: {
+      color: t.textPrimary,
+      fontSize: 15,
+      fontWeight: "700",
+      marginBottom: 12,
+    },
+    pillRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 12,
+    },
+    timePill: {
+      backgroundColor: t.surfaceAlt,
+      borderWidth: 1,
+      borderColor: t.border,
+      borderRadius: 12,
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+    },
+    timePillActive: {
+      backgroundColor: t.accent,
+      borderColor: t.accent,
+    },
+    timePillText: { color: t.textTertiary, fontSize: 13, fontWeight: "600" },
+    timePillTextActive: { color: t.onAccent },
+    customInputRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginTop: 4,
+    },
+    inputLabel: { color: t.textMuted, fontSize: 13, marginRight: 10 },
+    textInput: {
+      color: t.textPrimary,
+      fontSize: 14,
+      backgroundColor: t.surfaceAlt,
+      borderWidth: 1,
+      borderColor: t.border,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    unitText: { color: t.textMuted, fontSize: 13, marginLeft: 8 },
+    subLabel: { color: t.textTertiary, fontSize: 12, fontWeight: "600", marginBottom: 8 },
+    tagGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    presetTag: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: t.surfaceAlt,
+      borderWidth: 1,
+      borderColor: t.border,
+      borderRadius: 12,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+    },
+    presetTagBreak: {
+      borderColor: t.neutral,
+    },
+    presetTagEmoji: { fontSize: 13, marginRight: 6 },
+    presetTagText: { color: t.textPrimary, fontSize: 12, fontWeight: "500", marginRight: 6 },
+    addPlus: { color: t.accent, fontSize: 14, fontWeight: "700" },
+    customTagRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    typeToggle: {
+      backgroundColor: t.surfaceAlt,
+      borderWidth: 1,
+      borderColor: t.border,
+      borderRadius: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      marginRight: 8,
+    },
+    typeToggleBreak: {
+      borderColor: t.neutral,
+    },
+    typeToggleText: { color: t.textTertiary, fontSize: 12 },
+    addCustomBtn: {
+      backgroundColor: t.accent,
+      borderRadius: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+    },
+    addCustomBtnText: { color: t.onAccent, fontSize: 13, fontWeight: "700" },
+    allocationHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    allocationSummary: { fontSize: 13, fontWeight: "700" },
+    allocPerfect: { color: t.success },
+    allocWarn: { color: t.warning },
+    remainingHint: { color: t.accent, fontSize: 12, marginBottom: 10 },
+    emptyTasksText: { color: t.textMuted, fontSize: 13, fontStyle: "italic", textAlign: "center", marginVertical: 12 },
+    taskItem: {
+      backgroundColor: t.surfaceAlt,
+      borderWidth: 1,
+      borderColor: t.border,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 10,
+    },
+    taskTopRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 8,
+    },
+    taskEmoji: { fontSize: 15, marginRight: 8 },
+    taskName: { color: t.textPrimary, fontSize: 14, fontWeight: "600", flex: 1 },
+    taskDurationText: { color: t.accent, fontSize: 14, fontWeight: "700", marginRight: 10 },
+    breakText: { color: t.neutral },
+    deleteBtn: { padding: 4 },
+    deleteText: { color: t.danger, fontSize: 14, fontWeight: "700" },
+    sliderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    stepBtn: {
+      backgroundColor: t.border,
+      borderRadius: 8,
+      width: 32,
+      height: 32,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    stepBtnText: { color: t.textPrimary, fontSize: 16, fontWeight: "700" },
+    slider: {
+      flex: 1,
+      height: 40,
+      marginHorizontal: 8,
+    },
+    saveTemplateRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    templateNameInput: {
+      flex: 1,
+      color: t.textPrimary,
+      fontSize: 14,
+      backgroundColor: t.surface,
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      marginRight: 8,
+    },
+    saveTemplateBtn: {
+      backgroundColor: t.surface,
+      borderWidth: 1.5,
+      borderColor: t.accent,
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+    },
+    saveTemplateBtnDisabled: {
+      opacity: 0.4,
+    },
+    saveTemplateBtnText: { color: t.accent, fontSize: 14, fontWeight: "700" },
+    startBtn: {
+      backgroundColor: t.accent,
+      borderRadius: 14,
+      paddingVertical: 16,
+      alignItems: "center",
+      marginBottom: 40,
+    },
+    startBtnDisabled: {
+      backgroundColor: t.border,
+      opacity: 0.5,
+    },
+    startBtnText: {
+      color: t.onAccent,
+      fontSize: 16,
+      fontWeight: "700",
+    },
+  });

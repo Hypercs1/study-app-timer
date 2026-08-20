@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   SafeAreaView,
 } from "react-native";
 import { saveSession } from "../utils/storage";
+import { useTheme } from "../theme/ThemeContext";
 
 /**
  * Done screen — shown after completing all phases of a session.
@@ -15,6 +16,9 @@ import { saveSession } from "../utils/storage";
  * @param {{ session: Object, sessionMeta: Object, onGoHome: () => void }} props
  */
 export default function DoneScreen({ session, sessionMeta, onGoHome }) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   const phases = session?.phases || [];
   const [saved, setSaved] = useState(false);
   const didSaveRef = useRef(false);
@@ -83,60 +87,61 @@ export default function DoneScreen({ session, sessionMeta, onGoHome }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#090d14" },
-  wrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 28,
-  },
-  emoji: { fontSize: 56, marginBottom: 16 },
-  title: { color: "#f0f6ff", fontSize: 24, fontWeight: "800" },
-  subjectBadge: {
-    backgroundColor: "#131920",
-    borderRadius: 16,
-    paddingVertical: 5,
-    paddingHorizontal: 14,
-    marginTop: 8,
-  },
-  subjectText: {
-    color: "#4f8ef7",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  subtitle: {
-    color: "#556070",
-    fontSize: 14,
-    marginTop: 8,
-    textAlign: "center",
-    maxWidth: 260,
-  },
-  list: {
-    backgroundColor: "#131920",
-    borderWidth: 1.5,
-    borderColor: "#1e2a38",
-    borderRadius: 14,
-    padding: 18,
-    marginTop: 24,
-    marginBottom: 28,
-    width: "100%",
-    maxWidth: 300,
-  },
-  row: { flexDirection: "row", alignItems: "center", paddingVertical: 5 },
-  check: { fontSize: 15, marginRight: 10 },
-  rowText: { color: "#9ab", fontSize: 13 },
-  savedText: {
-    color: "#4caf6e",
-    fontSize: 12,
-    fontWeight: "600",
-    marginBottom: 16,
-  },
-  homeButton: {
-    backgroundColor: "#4f8ef7",
-    borderRadius: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 34,
-  },
-  homeButtonText: { color: "#fff", fontSize: 14, fontWeight: "700" },
-});
+const makeStyles = (t) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: t.bg },
+    wrap: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 28,
+    },
+    emoji: { fontSize: 56, marginBottom: 16 },
+    title: { color: t.textPrimary, fontSize: 24, fontWeight: "800" },
+    subjectBadge: {
+      backgroundColor: t.surface,
+      borderRadius: 16,
+      paddingVertical: 5,
+      paddingHorizontal: 14,
+      marginTop: 8,
+    },
+    subjectText: {
+      color: t.accent,
+      fontSize: 13,
+      fontWeight: "700",
+    },
+    subtitle: {
+      color: t.textMuted,
+      fontSize: 14,
+      marginTop: 8,
+      textAlign: "center",
+      maxWidth: 260,
+    },
+    list: {
+      backgroundColor: t.surface,
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 14,
+      padding: 18,
+      marginTop: 24,
+      marginBottom: 28,
+      width: "100%",
+      maxWidth: 300,
+    },
+    row: { flexDirection: "row", alignItems: "center", paddingVertical: 5 },
+    check: { fontSize: 15, marginRight: 10 },
+    rowText: { color: t.textTertiary, fontSize: 13 },
+    savedText: {
+      color: t.success,
+      fontSize: 12,
+      fontWeight: "600",
+      marginBottom: 16,
+    },
+    homeButton: {
+      backgroundColor: t.accent,
+      borderRadius: 12,
+      paddingVertical: 13,
+      paddingHorizontal: 34,
+    },
+    homeButtonText: { color: t.onAccent, fontSize: 14, fontWeight: "700" },
+  });

@@ -13,10 +13,12 @@ import * as Haptics from "expo-haptics";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { studyColors, breakColor } from "../constants/sessions";
 import { formatTime } from "../utils/formatTime";
+import { phaseElapsedSecs, minsFromSecs } from "../utils/studyTime";
 import { useTimer } from "../hooks/useTimer";
 import { useNotifications } from "../hooks/useNotifications";
 import { useAlarmSound } from "../hooks/useAlarmSound";
 import { loadSettings, saveSettings } from "../utils/storage";
+import { useTheme } from "../theme/ThemeContext";
 
 // Tag for the imperative keep-awake lock (held only while the timer runs).
 const KEEP_AWAKE_TAG = "study-session";
@@ -30,6 +32,9 @@ const ALARM_VIBRATION = [0, 500, 250, 500];
  * @param {{ session: Object, onGoHome: () => void, onComplete: (meta: Object) => void }} props
  */
 export default function SessionScreen({ session, subject, subjectColor, onGoHome, onComplete, onPartialQuit }) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   const phases = session.phases;
   const [phaseIndex, setPhaseIndex] = useState(0);
   const [showTip, setShowTip] = useState(false);
@@ -195,10 +200,8 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
   const goToPhase = useCallback(
     (idx, autoStart = false) => {
       // Accumulate actual study time from the current phase before switching
-      if (phase && !phase.isBreak) {
-        const spent = phase.duration * 60 - secondsLeft;
-        actualStudySecsRef.current += Math.max(0, spent);
-      }
+      // (0 for breaks; only real elapsed time, not the full phase length).
+      actualStudySecsRef.current += phaseElapsedSecs(phase, secondsLeft);
 
       setPhaseIndex(idx);
       setShowTip(false);
@@ -217,16 +220,12 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
 
   // Finish the whole session (last phase done, or the final phase was skipped).
   const finishSession = useCallback(() => {
-    if (phase && !phase.isBreak) {
-      const spent = phase.duration * 60 - secondsLeft;
-      actualStudySecsRef.current += Math.max(0, spent);
-    }
+    actualStudySecsRef.current += phaseElapsedSecs(phase, secondsLeft);
 
     stop();
     cancelAll();
 
-    const actualStudyMins =
-      Math.round((actualStudySecsRef.current / 60) * 10) / 10;
+    const actualStudyMins = minsFromSecs(actualStudySecsRef.current);
     onComplete({ startedAt: startedAtRef.current, actualStudyMins });
   }, [phase, secondsLeft, stop, cancelAll, onComplete]);
 
@@ -311,20 +310,14 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
       stop();
       cancelAll();
 
-      // Calculate actual study time for partial save
+      // Calculate actual study time for partial save. Use the same
+      // accumulated-elapsed basis as finishSession, so quitting credits exactly
+      // what a normal finish would for the same elapsed time — phases skipped
+      // early are not credited their full nominal length.
       if (startedAtRef.current && onPartialQuit) {
-        const completedStudyMins = phases
-          .slice(0, phaseIndex)
-          .filter((p) => !p.isBreak)
-          .reduce((a, p) => a + p.duration, 0);
-
-        const currentPhaseMins =
-          phase && !phase.isBreak
-            ? Math.max(0, (phase.duration * 60 - secondsLeft) / 60)
-            : 0;
-
-        const actualStudyMins =
-          Math.round((completedStudyMins + currentPhaseMins) * 10) / 10;
+        const actualStudyMins = minsFromSecs(
+          actualStudySecsRef.current + phaseElapsedSecs(phase, secondsLeft)
+        );
 
         const completedStudyPhases = phases
           .slice(0, phaseIndex)
@@ -367,44 +360,49 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
       styles.progressBarFill,
       { width: `${progress * 100}%`, backgroundColor: color },
     ],
-    [progress, color]
+    [styles, progress, color]
   );
 
   const pillStyle = useMemo(
     () => [styles.durationPill, { backgroundColor: color + "33" }],
-    [color]
+    [styles, color]
   );
 
   const pillTextStyle = useMemo(
     () => [styles.durationPillText, { color }],
-    [color]
+    [styles, color]
   );
 
   const playBtnStyle = useMemo(
     () => [styles.circleBtnBig, { backgroundColor: color }],
-    [color]
+    [styles, color]
   );
 
   const tipBtnStyle = useMemo(
     () => [styles.tipBtn, { borderColor: color + "66" }],
-    [color]
+    [styles, color]
   );
 
   const tipBtnTextStyle = useMemo(
     () => [styles.tipBtnText, { color }],
-    [color]
+    [styles, color]
   );
 
   const tipBoxStyle = useMemo(
     () => [styles.tipBox, { borderColor: color + "44" }],
-    [color]
+    [styles, color]
   );
 
   return (
     <SafeAreaView style={styles.container}>
       {/* ── Header ── */}
       <View style={styles.sessionTop}>
-        <TouchableOpacity onPress={handleGoHome} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={handleGoHome}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Leave session and go home"
+        >
           <Text style={styles.backBtnText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.sessionLabel}>{session.label}</Text>
@@ -414,7 +412,7 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
       {/* ── Subject badge ── */}
       {subject && (
         <View style={styles.subjectBadge}>
-          <View style={[styles.subjectDot, { backgroundColor: subjectColor || "#4f8ef7" }]} />
+          <View style={[styles.subjectDot, { backgroundColor: subjectColor || theme.accent }]} />
           <Text style={styles.subjectBadgeText}>{subject}</Text>
         </View>
       )}
@@ -457,15 +455,31 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
 
       {/* ── Controls ── */}
       <View style={styles.controls}>
-        <TouchableOpacity style={styles.circleBtnSmall} onPress={handleReset}>
+        <TouchableOpacity
+          style={styles.circleBtnSmall}
+          onPress={handleReset}
+          accessibilityRole="button"
+          accessibilityLabel="Reset timer"
+        >
           <Text style={styles.circleBtnText}>↺</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={playBtnStyle} onPress={handlePlayPause}>
+        <TouchableOpacity
+          style={playBtnStyle}
+          onPress={handlePlayPause}
+          accessibilityRole="button"
+          accessibilityLabel={running ? "Pause timer" : "Start timer"}
+          accessibilityState={{ selected: running }}
+        >
           <Text style={styles.circleBtnBigText}>
             {running ? "⏸" : "▶"}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.circleBtnSmall} onPress={handleSkip}>
+        <TouchableOpacity
+          style={styles.circleBtnSmall}
+          onPress={handleSkip}
+          accessibilityRole="button"
+          accessibilityLabel="Skip to next phase"
+        >
           <Text style={styles.circleBtnText}>⏭</Text>
         </TouchableOpacity>
       </View>
@@ -483,8 +497,10 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
         <Switch
           value={autoAdvance}
           onValueChange={toggleAutoAdvance}
-          trackColor={{ false: "#1e2a38", true: color }}
-          thumbColor="#fff"
+          trackColor={{ false: theme.border, true: color }}
+          thumbColor={theme.onAccent}
+          accessibilityLabel="Auto-advance phases"
+          accessibilityState={{ checked: autoAdvance }}
         />
       </View>
 
@@ -506,7 +522,13 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
       {/* ── Phase dots ── */}
       <View style={styles.dotsRow}>
         {phases.map((p, i) => (
-          <TouchableOpacity key={i} onPress={() => goToPhase(i)}>
+          <TouchableOpacity
+            key={i}
+            onPress={() => goToPhase(i)}
+            accessibilityRole="button"
+            accessibilityLabel={`Go to phase ${i + 1}: ${p.name}`}
+            accessibilityState={{ selected: i === phaseIndex }}
+          >
             <View
               style={[
                 styles.dot,
@@ -521,157 +543,158 @@ export default function SessionScreen({ session, subject, subjectColor, onGoHome
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0d1117" },
-  sessionTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-  },
-  backBtn: {
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  backBtnText: { color: "#aab4c8", fontSize: 18 },
-  sessionLabel: {
-    color: "rgba(255,255,255,0.45)",
-    fontSize: 12,
-    fontWeight: "600",
-    textTransform: "uppercase",
-  },
-  spacer: { width: 40 },
-  progressBarBg: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-    height: 3,
-    borderRadius: 4,
-    marginHorizontal: 20,
-    marginTop: 14,
-  },
-  progressBarFill: { height: 3, borderRadius: 4 },
-  progressText: {
-    color: "rgba(255,255,255,0.3)",
-    fontSize: 10,
-    textAlign: "center",
-    marginTop: 6,
-  },
-  phaseHeader: { alignItems: "center", marginTop: 20 },
-  phaseEmojiBig: { fontSize: 36, marginBottom: 6 },
-  phaseName: {
-    color: "#fff",
-    fontSize: 20,
-    fontWeight: "800",
-    textAlign: "center",
-    paddingHorizontal: 20,
-  },
-  durationPill: {
-    borderRadius: 20,
-    paddingVertical: 4,
-    paddingHorizontal: 14,
-    marginTop: 8,
-  },
-  durationPillText: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
-  timerWrap: { alignItems: "center", marginTop: 24, marginBottom: 16 },
-  timerText: { color: "#fff", fontSize: 56, fontWeight: "800" },
-  timerStatus: {
-    color: "rgba(255,255,255,0.35)",
-    fontSize: 13,
-    marginTop: 4,
-  },
-  controls: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 18,
-  },
-  circleBtnSmall: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  circleBtnText: { color: "#fff", fontSize: 18 },
-  circleBtnBig: {
-    width: 66,
-    height: 66,
-    borderRadius: 33,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  circleBtnBigText: { fontSize: 24 },
-  autoAdvanceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    alignSelf: "center",
-    backgroundColor: "#131920",
-    borderWidth: 1,
-    borderColor: "#1e2a38",
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginTop: 20,
-    width: "86%",
-  },
-  autoAdvanceTextWrap: { flex: 1, paddingRight: 12 },
-  autoAdvanceLabel: { color: "#f0f6ff", fontSize: 14, fontWeight: "700" },
-  autoAdvanceHint: { color: "#556070", fontSize: 11, marginTop: 2 },
-  tipBtn: {
-    alignSelf: "center",
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    marginTop: 18,
-  },
-  tipBtnText: { fontSize: 12, fontWeight: "600" },
-  tipBox: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    marginHorizontal: 22,
-    marginTop: 10,
-  },
-  tipBoxText: { color: "#e8eaf0", fontSize: 13, lineHeight: 20 },
-  dotsRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 24,
-    paddingHorizontal: 16,
-    paddingBottom: 20,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "rgba(255,255,255,0.18)",
-  },
-  subjectBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "center",
-    backgroundColor: "#131920",
-    borderRadius: 16,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-    marginTop: 8,
-  },
-  subjectDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  subjectBadgeText: {
-    color: "#9ab",
-    fontSize: 11,
-    fontWeight: "600",
-  },
-});
+const makeStyles = (t) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: t.bgSession },
+    sessionTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingTop: 12,
+    },
+    backBtn: {
+      backgroundColor: t.overlayBtn,
+      borderRadius: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+    },
+    backBtnText: { color: t.textSecondary, fontSize: 18 },
+    sessionLabel: {
+      color: t.textFaint,
+      fontSize: 12,
+      fontWeight: "600",
+      textTransform: "uppercase",
+    },
+    spacer: { width: 40 },
+    progressBarBg: {
+      backgroundColor: t.progressTrack,
+      height: 3,
+      borderRadius: 4,
+      marginHorizontal: 20,
+      marginTop: 14,
+    },
+    progressBarFill: { height: 3, borderRadius: 4 },
+    progressText: {
+      color: t.textFaint,
+      fontSize: 10,
+      textAlign: "center",
+      marginTop: 6,
+    },
+    phaseHeader: { alignItems: "center", marginTop: 20 },
+    phaseEmojiBig: { fontSize: 36, marginBottom: 6 },
+    phaseName: {
+      color: t.textPrimary,
+      fontSize: 20,
+      fontWeight: "800",
+      textAlign: "center",
+      paddingHorizontal: 20,
+    },
+    durationPill: {
+      borderRadius: 20,
+      paddingVertical: 4,
+      paddingHorizontal: 14,
+      marginTop: 8,
+    },
+    durationPillText: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
+    timerWrap: { alignItems: "center", marginTop: 24, marginBottom: 16 },
+    timerText: { color: t.timerText, fontSize: 56, fontWeight: "800" },
+    timerStatus: {
+      color: t.textFaint,
+      fontSize: 13,
+      marginTop: 4,
+    },
+    controls: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 18,
+    },
+    circleBtnSmall: {
+      backgroundColor: t.overlayBtn,
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    circleBtnText: { color: t.textPrimary, fontSize: 18 },
+    circleBtnBig: {
+      width: 66,
+      height: 66,
+      borderRadius: 33,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    circleBtnBigText: { fontSize: 24, color: t.onAccent },
+    autoAdvanceRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      alignSelf: "center",
+      backgroundColor: t.surface,
+      borderWidth: 1,
+      borderColor: t.border,
+      borderRadius: 14,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      marginTop: 20,
+      width: "86%",
+    },
+    autoAdvanceTextWrap: { flex: 1, paddingRight: 12 },
+    autoAdvanceLabel: { color: t.textPrimary, fontSize: 14, fontWeight: "700" },
+    autoAdvanceHint: { color: t.textMuted, fontSize: 11, marginTop: 2 },
+    tipBtn: {
+      alignSelf: "center",
+      borderWidth: 1,
+      borderRadius: 20,
+      paddingVertical: 6,
+      paddingHorizontal: 16,
+      marginTop: 18,
+    },
+    tipBtnText: { fontSize: 12, fontWeight: "600" },
+    tipBox: {
+      borderWidth: 1,
+      borderRadius: 12,
+      padding: 14,
+      marginHorizontal: 22,
+      marginTop: 10,
+    },
+    tipBoxText: { color: t.textPrimary, fontSize: 13, lineHeight: 20 },
+    dotsRow: {
+      flexDirection: "row",
+      justifyContent: "center",
+      flexWrap: "wrap",
+      gap: 6,
+      marginTop: 24,
+      paddingHorizontal: 16,
+      paddingBottom: 20,
+    },
+    dot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: t.dotIdle,
+    },
+    subjectBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "center",
+      backgroundColor: t.surface,
+      borderRadius: 16,
+      paddingVertical: 5,
+      paddingHorizontal: 12,
+      marginTop: 8,
+    },
+    subjectDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      marginRight: 6,
+    },
+    subjectBadgeText: {
+      color: t.textTertiary,
+      fontSize: 11,
+      fontWeight: "600",
+    },
+  });

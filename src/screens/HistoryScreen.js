@@ -16,6 +16,7 @@ import {
   updateSession,
   loadSubjects,
 } from "../utils/storage";
+import { useTheme } from "../theme/ThemeContext";
 
 /**
  * Simple hook that runs a callback every time the component mounts.
@@ -87,6 +88,9 @@ function formatTimeOfDay(isoString) {
  * @param {{ onGoHome: () => void }} props
  */
 export default function HistoryScreen({ onGoHome }) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   const [sessions, setSessions] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -183,7 +187,12 @@ export default function HistoryScreen({ onGoHome }) {
     <SafeAreaView style={styles.container}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onGoHome} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={onGoHome}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go home"
+        >
           <Text style={styles.backBtnText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>📋 History</Text>
@@ -209,7 +218,7 @@ export default function HistoryScreen({ onGoHome }) {
 
             {group.sessions.map((s) => {
               const color =
-                subjectColorMap[(s.subject || "").toLowerCase()] || "#556070";
+                subjectColorMap[(s.subject || "").toLowerCase()] || theme.textMuted;
               const isEditing = editingId === s.id;
 
               return (
@@ -232,12 +241,16 @@ export default function HistoryScreen({ onGoHome }) {
                         <TouchableOpacity
                           onPress={handleSaveEdit}
                           style={styles.editAction}
+                          accessibilityRole="button"
+                          accessibilityLabel="Save name"
                         >
                           <Text style={styles.editSave}>✓</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={handleCancelEdit}
                           style={styles.editAction}
+                          accessibilityRole="button"
+                          accessibilityLabel="Cancel editing"
                         >
                           <Text style={styles.editCancel}>✕</Text>
                         </TouchableOpacity>
@@ -254,12 +267,16 @@ export default function HistoryScreen({ onGoHome }) {
                         <TouchableOpacity
                           onPress={() => handleStartEdit(s)}
                           style={styles.iconBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel="Edit subject"
                         >
                           <Text style={styles.iconText}>✏️</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => handleDelete(s.id)}
                           style={styles.iconBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel="Delete session"
                         >
                           <Text style={styles.iconText}>🗑️</Text>
                         </TouchableOpacity>
@@ -298,116 +315,117 @@ export default function HistoryScreen({ onGoHome }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#090d14" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  backBtn: {
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  backBtnText: { color: "#aab4c8", fontSize: 18 },
-  headerTitle: { color: "#f0f6ff", fontSize: 16, fontWeight: "700" },
-  spacer: { width: 40 },
-  scroll: { padding: 20, paddingTop: 8 },
-  emptyWrap: { alignItems: "center", marginTop: 80 },
-  emptyEmoji: { fontSize: 48, marginBottom: 12 },
-  emptyTitle: {
-    color: "#f0f6ff",
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 6,
-  },
-  emptyText: {
-    color: "#556070",
-    fontSize: 13,
-    textAlign: "center",
-    maxWidth: 220,
-  },
-  dayGroup: { marginBottom: 20 },
-  dayLabel: {
-    color: "#556070",
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  card: {
-    backgroundColor: "#131920",
-    borderWidth: 1.5,
-    borderColor: "#1e2a38",
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 10,
-  },
-  cardTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  colorDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 10,
-  },
-  cardSubject: {
-    fontSize: 13,
-    fontWeight: "700",
-    marginBottom: 2,
-  },
-  cardTitle: { color: "#f0f6ff", fontSize: 15, fontWeight: "700" },
-  cardMeta: { color: "#9ab", fontSize: 12, marginBottom: 2, marginLeft: 20 },
-  cardTime: { color: "#556070", fontSize: 11, marginLeft: 20 },
-  iconBtn: {
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-  },
-  iconText: { fontSize: 14 },
-  editRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  editInput: {
-    flex: 1,
-    color: "#f0f6ff",
-    fontSize: 14,
-    backgroundColor: "#0d1117",
-    borderWidth: 1,
-    borderColor: "#1e2a38",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  editAction: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  editSave: { color: "#4caf6e", fontSize: 18, fontWeight: "700" },
-  editCancel: { color: "#e06070", fontSize: 18, fontWeight: "700" },
-  clearBtn: {
-    alignSelf: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,80,80,0.3)",
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    marginTop: 12,
-    marginBottom: 32,
-  },
-  clearBtnText: {
-    color: "rgba(255,80,80,0.7)",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-});
+const makeStyles = (t) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: t.bg },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingTop: 12,
+      paddingBottom: 8,
+    },
+    backBtn: {
+      backgroundColor: t.hairline,
+      borderRadius: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+    },
+    backBtnText: { color: t.textSecondary, fontSize: 18 },
+    headerTitle: { color: t.textPrimary, fontSize: 16, fontWeight: "700" },
+    spacer: { width: 40 },
+    scroll: { padding: 20, paddingTop: 8 },
+    emptyWrap: { alignItems: "center", marginTop: 80 },
+    emptyEmoji: { fontSize: 48, marginBottom: 12 },
+    emptyTitle: {
+      color: t.textPrimary,
+      fontSize: 18,
+      fontWeight: "700",
+      marginBottom: 6,
+    },
+    emptyText: {
+      color: t.textMuted,
+      fontSize: 13,
+      textAlign: "center",
+      maxWidth: 220,
+    },
+    dayGroup: { marginBottom: 20 },
+    dayLabel: {
+      color: t.textMuted,
+      fontSize: 11,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginBottom: 8,
+    },
+    card: {
+      backgroundColor: t.surface,
+      borderWidth: 1.5,
+      borderColor: t.border,
+      borderRadius: 14,
+      padding: 16,
+      marginBottom: 10,
+    },
+    cardTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 4,
+    },
+    colorDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      marginRight: 10,
+    },
+    cardSubject: {
+      fontSize: 13,
+      fontWeight: "700",
+      marginBottom: 2,
+    },
+    cardTitle: { color: t.textPrimary, fontSize: 15, fontWeight: "700" },
+    cardMeta: { color: t.textTertiary, fontSize: 12, marginBottom: 2, marginLeft: 20 },
+    cardTime: { color: t.textMuted, fontSize: 11, marginLeft: 20 },
+    iconBtn: {
+      paddingHorizontal: 6,
+      paddingVertical: 4,
+    },
+    iconText: { fontSize: 14 },
+    editRow: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    editInput: {
+      flex: 1,
+      color: t.textPrimary,
+      fontSize: 14,
+      backgroundColor: t.surfaceAlt,
+      borderWidth: 1,
+      borderColor: t.border,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    editAction: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    editSave: { color: t.success, fontSize: 18, fontWeight: "700" },
+    editCancel: { color: t.danger, fontSize: 18, fontWeight: "700" },
+    clearBtn: {
+      alignSelf: "center",
+      borderWidth: 1,
+      borderColor: t.danger,
+      borderRadius: 20,
+      paddingVertical: 8,
+      paddingHorizontal: 20,
+      marginTop: 12,
+      marginBottom: 32,
+    },
+    clearBtnText: {
+      color: t.danger,
+      fontSize: 12,
+      fontWeight: "600",
+    },
+  });
